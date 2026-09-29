@@ -1,0 +1,17 @@
+{
+  "name": "@gc/types",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "gen": "openapi-typescript openapi.json -o src/openapi.d.ts",
+    "lint": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^7.0.2"
+  }
+}

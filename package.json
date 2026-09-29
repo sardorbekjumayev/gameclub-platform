@@ -1,0 +1,17 @@
+{
+  "name": "game-club-platform",
+  "private": true,
+  "packageManager": "pnpm@12.6.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @gc/api dev",
+    "dev:web": "pnpm --filter @gc/web dev",
+    "dev:admin": "pnpm --filter @gc/admin dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @gc/api test:e2e",
+    "lint": "pnpm -r lint",
+    "db:migrate": "pnpm --filter @gc/api db:migrate",
+    "db:seed": "pnpm --filter @gc/api db:seed",
+    "gen:types": "pnpm --filter @gc/api openapi && pnpm --filter @gc/types gen"
+  }
+}

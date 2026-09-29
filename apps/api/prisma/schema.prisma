@@ -1,0 +1,12 @@
+// Sxema: docs/02-DATABASE.md. Prisma qo'llamaydigan qismlar (PostGIS, exclusion, partial index)
+// migratsiya SQL fayllarida qo'lda yoziladi.
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis, btree_gist, pg_trgm, citext, pgcrypto]
+}

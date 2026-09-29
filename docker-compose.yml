@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: gc
+      POSTGRES_PASSWORD: gc
+      POSTGRES_DB: gameclub
+    ports: ["55432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+  redis:
+    image: redis:7-alpine
+    ports: ["56379:6379"]
+volumes:
+  pgdata: {}
