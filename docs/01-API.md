@@ -502,8 +502,9 @@ Har bir phase'da: **API / Web / Mobile** vazifalari va Acceptance. (`[ ]` — ba
 - Acceptance: hamma ilova lokal ishga tushadi, DB ulanadi, CI yashil.
 
 **PHASE 1 — Auth & RBAC**
-- [ ] users, OTP (mock SMS), staff login, JWT+refresh rotation, roles/permissions seed, guards, `/auth/me`, 2FA (staff), invitations
-- [ ] Web: customer login/register; admin login. Mobile: login/OTP/profil
+- [x] users, OTP (mock SMS), staff login, JWT+refresh rotation, roles/permissions seed, guards, `/auth/me`
+- [ ] 2FA (staff), invitations — Phase 2 (xodimlar bilan birga)
+- [x] Web: customer login/register; admin login. Mobile: login/OTP/profil
 - Acceptance: customer, staff, super admin login qila oladi; ruxsatsiz resurs 401/403; refresh reuse bloklanadi.
 
 **PHASE 2 — Club & Branch**

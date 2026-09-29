@@ -8,7 +8,11 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { validateEnv } from './config/env';
 import { DatabaseModule } from './database/database.module';
 import { RedisModule } from './infra/redis/redis.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
+import { RbacModule } from './modules/rbac/rbac.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -34,6 +38,10 @@ import { HealthModule } from './modules/health/health.module';
     }),
     DatabaseModule,
     RedisModule,
+    AuditModule,
+    RbacModule,
+    AuthModule,
+    UsersModule,
     HealthModule,
   ],
   providers: [

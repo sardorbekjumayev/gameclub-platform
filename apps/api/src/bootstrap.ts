@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
@@ -9,6 +10,8 @@ export const API_PREFIX = 'api/v1';
 export function configureApp(app: INestApplication) {
   const config = app.get(ConfigService);
   app.setGlobalPrefix(API_PREFIX);
+  // Web/admin Next proxy va Nginx orqasida haqiqiy klient IP (rate limit, audit uchun)
+  (app as NestExpressApplication).set('trust proxy', 'loopback');
   app.use(helmet());
   app.enableCors({ origin: config.get<string[]>('CORS_ORIGINS'), credentials: true });
   app.useGlobalPipes(

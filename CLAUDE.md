@@ -36,5 +36,7 @@ pnpm db:migrate | pnpm db:seed
 pnpm gen:types   # OpenAPI -> packages/types
 cd mobile && flutter run --dart-define=API_URL=http://<host>:4700/api/v1
 ```
+Dev kirish: super admin `admin@gameclub.local` / `ChangeMe123!` (`apps/api/.env`), customer OTP kodi dev'da `000000`.
+Web/admin API'ni o'z domeni orqali `/api/v1` (Next rewrite → `API_ORIGIN`) chaqiradi — CORS kerak emas.
 Portlar (serverdagi boshqa servislar bilan to'qnashmaslik uchun): API `4700` (Swagger `/api/docs`), web `4710`, admin `4720`.
 Object storage (S3/MinIO) hali docker-compose'da yo'q — `minio/minio` image reestrdan olib bo'lmadi; Phase 2 (files) da qo'shiladi.

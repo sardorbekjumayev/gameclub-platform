@@ -1,10 +1,12 @@
 import { Controller, Get, HttpStatus, Inject, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '../../common/decorators/auth.decorators';
 import type { Response } from 'express';
 import Redis from 'ioredis';
 import { PrismaService } from '../../database/prisma.service';
 import { REDIS } from '../../infra/redis/redis.module';
 
+@Public()
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
