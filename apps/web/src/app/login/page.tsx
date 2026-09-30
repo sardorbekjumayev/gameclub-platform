@@ -72,8 +72,8 @@ export default function LoginPage() {
 
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-12">
-      <Card className="w-full max-w-sm">
-        <h1 className="mb-4 text-xl font-semibold">{t("auth.title")}</h1>
+      <Card className="w-full max-w-sm p-6">
+        <h1 className="mb-5 font-display text-2xl font-bold">{t("auth.title")}</h1>
         {error && (
           <div className="mb-4">
             <Alert>{error}</Alert>
@@ -90,13 +90,13 @@ export default function LoginPage() {
             <Field label={t("auth.phone")}>
               <Input type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" autoFocus required />
             </Field>
-            <Button type="submit" loading={busy} className="w-full">
+            <Button type="submit" loading={busy} size="lg" className="w-full">
               {t("auth.sendCode")}
             </Button>
           </form>
         ) : (
           <form className="space-y-4" onSubmit={verify}>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">{t("auth.codeSent", { phone: normalizePhone(phone) })}</p>
+            <p className="text-sm text-muted">{t("auth.codeSent", { phone: normalizePhone(phone) })}</p>
             <Field label={t("auth.code")} hint={process.env.NODE_ENV !== "production" ? t("auth.devHint") : undefined}>
               <Input
                 inputMode="numeric"
@@ -109,17 +109,17 @@ export default function LoginPage() {
                 required
               />
             </Field>
-            <Button type="submit" loading={busy} disabled={code.length !== 6} className="w-full">
+            <Button type="submit" loading={busy} disabled={code.length !== 6} size="lg" className="w-full">
               {t("auth.verify")}
             </Button>
             <div className="flex justify-between text-sm">
-              <button type="button" className="text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200" onClick={() => setStep("phone")}>
+              <button type="button" className="font-semibold text-muted hover:text-fg" onClick={() => setStep("phone")}>
                 {t("auth.changePhone")}
               </button>
               {cooldown > 0 ? (
-                <span className="text-zinc-400">{t("auth.resendIn", { s: cooldown })}</span>
+                <span className="text-muted">{t("auth.resendIn", { s: cooldown })}</span>
               ) : (
-                <button type="button" className="text-violet-600 hover:underline" onClick={sendCode}>
+                <button type="button" className="font-bold text-accent hover:underline" onClick={sendCode}>
                   {t("auth.resend")}
                 </button>
               )}

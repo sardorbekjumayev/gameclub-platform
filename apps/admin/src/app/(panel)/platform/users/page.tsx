@@ -2,7 +2,7 @@
 
 import { formatDateTime } from "@gc/types";
 import { useEffect, useState } from "react";
-import { Alert, Badge, Button, Card, Input, Select, Spinner } from "@/components/ui";
+import { Alert, Badge, Button, Card, Heading, Input, Select, Spinner } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session } from "@/lib/session";
 
@@ -68,7 +68,7 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">{t("users.title")}</h1>
+      <Heading>{t("users.title")}</Heading>
       <form
         className="flex flex-wrap gap-2"
         onSubmit={(e) => {
@@ -111,7 +111,7 @@ export default function UsersPage() {
 
       <Card className="overflow-x-auto p-0">
         <table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="border-b border-zinc-200 text-xs uppercase text-zinc-500 dark:border-zinc-800">
+          <thead className="border-b border-line-soft text-xs font-bold uppercase tracking-wide text-muted">
             <tr>
               <th className="px-4 py-3">{t("users.col.name")}</th>
               <th className="px-4 py-3">{t("users.col.contact")}</th>
@@ -124,29 +124,29 @@ export default function UsersPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-zinc-500">
+                <td colSpan={6} className="px-4 py-10 text-center text-muted">
                   <Spinner className="mx-auto h-5 w-5" />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-zinc-500">
+                <td colSpan={6} className="px-4 py-10 text-center text-muted">
                   {t("common.empty")}
                 </td>
               </tr>
             ) : (
               rows.map((r) => (
-                <tr key={r.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                <tr key={r.id} className="border-b border-line-soft transition last:border-0 hover:bg-surface-2">
                   <td className="px-4 py-3">{[r.first_name, r.last_name].filter(Boolean).join(" ") || "—"}</td>
                   <td className="px-4 py-3 font-mono text-xs">{r.phone ?? r.email}</td>
                   <td className="px-4 py-3">
-                    <Badge tone={r.type === "CUSTOMER" ? "neutral" : "violet"}>{r.type}</Badge>
+                    <Badge tone={r.type === "CUSTOMER" ? "neutral" : r.type === "PLATFORM" ? "amber" : "violet"}>{r.type}</Badge>
                   </td>
                   <td className="px-4 py-3">
                     <Badge tone={r.status === "ACTIVE" ? "green" : "red"}>{r.status}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-zinc-500">{formatDateTime(r.created_at, undefined, locale)}</td>
-                  <td className="px-4 py-3 text-zinc-500">{r.last_login_at ? formatDateTime(r.last_login_at, undefined, locale) : "—"}</td>
+                  <td className="px-4 py-3 text-muted">{formatDateTime(r.created_at, undefined, locale)}</td>
+                  <td className="px-4 py-3 text-muted">{r.last_login_at ? formatDateTime(r.last_login_at, undefined, locale) : "—"}</td>
                 </tr>
               ))
             )}
@@ -154,7 +154,7 @@ export default function UsersPage() {
         </table>
       </Card>
 
-      <div className="flex items-center justify-between text-sm text-zinc-500">
+      <div className="flex items-center justify-between text-sm text-muted">
         <span>{t("common.page", { page, pages })}</span>
         <div className="flex gap-2">
           <Button variant="secondary" disabled={page <= 1} onClick={() => refetch(() => setPage((p) => p - 1))}>

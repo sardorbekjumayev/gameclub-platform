@@ -50,5 +50,6 @@
   "errors.VALIDATION_ERROR": "Ma'lumotlar noto'g'ri kiritilgan",
   "errors.CONFLICT": "Bu qiymat allaqachon band",
   "errors.NETWORK_ERROR": "Server bilan aloqa yo'q",
-  "errors.UNKNOWN": "Kutilmagan xatolik yuz berdi"
+  "errors.UNKNOWN": "Kutilmagan xatolik yuz berdi",
+  "map.loadError": "Xaritani yuklab bo'lmadi"
 }

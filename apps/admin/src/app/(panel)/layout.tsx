@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LocaleSwitcher } from "@/components/locale-switcher";
-import { Alert, Button, Spinner } from "@/components/ui";
+import { Alert, Button, Logo, Spinner } from "@/components/ui";
 import { type MessageKey, useI18n } from "@/i18n/provider";
 import { useAuth } from "@/lib/session";
 
@@ -29,7 +29,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
 
   if (loading || !me) {
     return (
-      <div className="flex flex-1 items-center justify-center text-zinc-500">
+      <div className="flex flex-1 items-center justify-center">
         <Spinner />
       </div>
     );
@@ -52,21 +52,21 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex min-h-screen flex-1">
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-60 border-r border-zinc-200 bg-white p-4 transition-transform dark:border-zinc-800 dark:bg-zinc-900 md:static md:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-30 w-[220px] border-r border-line-soft bg-bg px-4 py-6 transition-transform md:static md:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="mb-6 px-2 text-lg font-semibold">
-          <span className="text-violet-600">●</span> Game Club
+        <div className="px-3 pb-4">
+          <Logo className="text-xl" />
         </div>
-        <nav className="space-y-1">
+        <nav className="space-y-1.5">
           {items.map((i, idx) => (
             <div key={i.href}>
               {i.section && items[idx - 1]?.section !== i.section && (
-                <div className="mt-4 mb-1 px-2 text-xs font-medium uppercase tracking-wide text-zinc-400">{t(i.section)}</div>
+                <div className="mt-5 mb-1 px-3 text-[11px] font-bold uppercase tracking-widest text-muted/70">{t(i.section)}</div>
               )}
               <Link
                 href={i.href}
                 onClick={() => setOpen(false)}
-                className={`block rounded-lg px-3 py-2 text-sm ${pathname === i.href ? "bg-violet-50 font-medium text-violet-700 dark:bg-violet-950/60 dark:text-violet-300" : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}
+                className={`block rounded-[10px] p-3 text-[15px] transition ${pathname === i.href ? "bg-surface-2 font-bold text-fg" : "text-muted hover:bg-surface hover:text-fg"}`}
               >
                 {t(i.label)}
               </Link>
@@ -74,15 +74,15 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
           ))}
         </nav>
       </aside>
-      {open && <div className="fixed inset-0 z-20 bg-black/30 md:hidden" onClick={() => setOpen(false)} />}
+      {open && <div className="fixed inset-0 z-20 bg-black/60 md:hidden" onClick={() => setOpen(false)} />}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <button className="md:hidden" onClick={() => setOpen(true)} aria-label="Menu">
+        <header className="flex h-16 items-center justify-between gap-3 border-b border-line-soft bg-bg px-4 md:px-8">
+          <button className="rounded-lg px-2 py-1 text-xl text-muted hover:text-fg md:hidden" onClick={() => setOpen(true)} aria-label="Menu">
             ☰
           </button>
           <div className="ml-auto flex items-center gap-3">
             <LocaleSwitcher />
-            <span className="hidden text-sm text-zinc-600 sm:inline dark:text-zinc-400">{name}</span>
+            <span className="hidden text-sm font-semibold text-muted sm:inline">{name}</span>
             <Button
               variant="ghost"
               onClick={async () => {
@@ -94,7 +94,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
             </Button>
           </div>
         </header>
-        <main className="flex-1 p-4 md:p-8">{children}</main>
+        <main className="flex-1 px-4 py-6 md:px-8 md:py-7">{children}</main>
       </div>
     </div>
   );

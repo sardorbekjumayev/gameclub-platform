@@ -50,5 +50,6 @@
   "errors.VALIDATION_ERROR": "Some fields are invalid",
   "errors.CONFLICT": "This value is already taken",
   "errors.NETWORK_ERROR": "Cannot reach the server",
-  "errors.UNKNOWN": "Something went wrong"
+  "errors.UNKNOWN": "Something went wrong",
+  "map.loadError": "Couldn't load the map"
 }

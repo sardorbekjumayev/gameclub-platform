@@ -50,5 +50,6 @@
   "errors.VALIDATION_ERROR": "Данные введены неверно",
   "errors.CONFLICT": "Это значение уже занято",
   "errors.NETWORK_ERROR": "Нет связи с сервером",
-  "errors.UNKNOWN": "Произошла непредвиденная ошибка"
+  "errors.UNKNOWN": "Произошла непредвиденная ошибка",
+  "map.loadError": "Не удалось загрузить карту"
 }

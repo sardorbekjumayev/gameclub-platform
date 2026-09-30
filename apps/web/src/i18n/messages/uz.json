@@ -44,5 +44,15 @@
   "errors.FORBIDDEN": "Akkaunt bloklangan",
   "errors.CONFLICT": "Bu email allaqachon ishlatilgan",
   "errors.NETWORK_ERROR": "Server bilan aloqa yo'q",
-  "errors.UNKNOWN": "Kutilmagan xatolik yuz berdi"
+  "errors.UNKNOWN": "Kutilmagan xatolik yuz berdi",
+  "nav.map": "Xarita",
+  "map.nearby": "Yaqin filiallar",
+  "map.found": "{n} ta topildi",
+  "map.free": "{n} ta bo'sh PC",
+  "map.priceFrom": "{price}/soat dan",
+  "map.empty": "Bu hududda klub topilmadi. Xaritani suring yoki kichraytiring.",
+  "map.soon": "Klublar katalogi tez orada qo'shiladi.",
+  "map.error": "Klublarni yuklab bo'lmadi",
+  "map.retry": "Qayta urinish",
+  "map.loadError": "Xaritani yuklab bo'lmadi"
 }

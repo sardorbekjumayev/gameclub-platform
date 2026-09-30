@@ -2,7 +2,7 @@
 
 import type { Me } from "@gc/types";
 import { useState } from "react";
-import { Alert, Button, Card, Field, Input, Select } from "@/components/ui";
+import { Alert, Button, Card, Field, Heading, Input, Select } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session, useAuth } from "@/lib/session";
 
@@ -53,7 +53,7 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-xl space-y-6">
-      <h1 className="text-2xl font-semibold">{t("profile.title")}</h1>
+      <Heading>{t("profile.title")}</Heading>
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
       <Card>
         <form onSubmit={saveProfile} className="grid gap-4 sm:grid-cols-2">

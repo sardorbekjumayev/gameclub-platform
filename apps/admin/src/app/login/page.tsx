@@ -4,7 +4,7 @@ import type { LoginResult } from "@gc/types";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LocaleSwitcher } from "@/components/locale-switcher";
-import { Alert, Button, Card, Field, Input } from "@/components/ui";
+import { Alert, Button, Card, Field, Input, Logo } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session, useAuth } from "@/lib/session";
 
@@ -41,16 +41,14 @@ export default function LoginPage() {
     <main className="flex flex-1 items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex items-center justify-between">
-          <span className="text-lg font-semibold">
-            <span className="text-violet-600">●</span> {t("app.title")}
-          </span>
+          <Logo />
           <LocaleSwitcher />
         </div>
-        <Card>
+        <Card className="p-6">
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <h1 className="text-xl font-semibold">{t("auth.login.title")}</h1>
-              <p className="text-sm text-zinc-500">{t("auth.login.subtitle")}</p>
+              <h1 className="font-display text-2xl font-bold">{t("auth.login.title")}</h1>
+              <p className="mt-1 text-sm text-muted">{t("auth.login.subtitle")}</p>
             </div>
             {error && <Alert>{error}</Alert>}
             <Field label={t("auth.login.login")}>
@@ -59,7 +57,7 @@ export default function LoginPage() {
             <Field label={t("auth.login.password")}>
               <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
             </Field>
-            <Button type="submit" loading={busy} className="w-full">
+            <Button type="submit" loading={busy} size="lg" className="w-full">
               {t("auth.login.submit")}
             </Button>
           </form>

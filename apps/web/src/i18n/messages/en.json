@@ -44,5 +44,15 @@
   "errors.FORBIDDEN": "Account is blocked",
   "errors.CONFLICT": "This email is already in use",
   "errors.NETWORK_ERROR": "Cannot reach the server",
-  "errors.UNKNOWN": "Something went wrong"
+  "errors.UNKNOWN": "Something went wrong",
+  "nav.map": "Map",
+  "map.nearby": "Nearby branches",
+  "map.found": "{n} found",
+  "map.free": "{n} PCs free",
+  "map.priceFrom": "from {price}/hour",
+  "map.empty": "No clubs in this area. Pan or zoom out the map.",
+  "map.soon": "The club catalog is coming soon.",
+  "map.error": "Couldn't load clubs",
+  "map.retry": "Retry",
+  "map.loadError": "Couldn't load the map"
 }

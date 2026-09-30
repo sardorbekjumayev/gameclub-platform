@@ -1,10 +1,60 @@
 @import "tailwindcss";
 
+/* Dizayn tokenlari — designn/ maketlaridan (qorong'i tema, lime aksent). */
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-manrope), system-ui, sans-serif;
+  --font-display: var(--font-chakra), var(--font-manrope), sans-serif;
+
+  --color-bg: #0e0f13;
+  --color-surface: #171922;
+  --color-surface-2: #1e212b;
+  --color-surface-3: #232734;
+  --color-line: #2b3040;
+  --color-line-soft: #262a36;
+  --color-fg: #edeef2;
+  --color-muted: #a3a9ba;
+  --color-accent: #c6ff3d;
+  --color-accent-hover: #d4ff6b;
+  --color-on-accent: #0e0f13;
+  --color-warn: #ffb020;
+  --color-danger: #ff7a7a;
+  --color-danger-soft: #ff9c9c;
+}
+
+html {
+  background: var(--color-bg);
+  color-scheme: dark;
 }
 
 body {
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+/* Yandex xarita: qorong'i tema (tile'larni invert) va narx "pill" markerlari. */
+.gc-map [class*="ground-pane"] {
+  filter: invert(0.92) hue-rotate(180deg) saturate(0.6) brightness(0.9);
+}
+.gc-map [class*="copyrights-pane"] {
+  opacity: 0.6;
+}
+.gc-pin {
+  display: inline-block;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--color-surface-3);
+  border: 1px solid #3a4052;
+  color: var(--color-fg);
+  font: 700 13px var(--font-sans);
+  cursor: pointer;
+}
+.gc-pin--active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
 }

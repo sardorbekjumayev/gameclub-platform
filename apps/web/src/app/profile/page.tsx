@@ -68,7 +68,7 @@ function ProfileForm({ me }: { me: Me }) {
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 space-y-6 px-4 py-10">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t("profile.title")}</h1>
+        <h1 className="font-display text-[26px] font-bold">{t("profile.title")}</h1>
         <Button
           variant="secondary"
           onClick={async () => {
@@ -111,7 +111,7 @@ function ProfileForm({ me }: { me: Me }) {
       </Card>
       <Card>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">{t("profile.sessions")}</h2>
+          <h2 className="font-display text-lg font-bold">{t("profile.sessions")}</h2>
           <Button
             variant="ghost"
             onClick={async () => {
@@ -127,12 +127,12 @@ function ProfileForm({ me }: { me: Me }) {
         {sessions === null ? (
           <Spinner />
         ) : (
-          <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <ul className="divide-y divide-line-soft">
             {sessions.map((s) => (
               <li key={s.id} className="flex items-center justify-between py-3 text-sm">
                 <div>
-                  <div className="font-medium">{s.device_info?.platform ?? "—"}</div>
-                  <div className="text-xs text-zinc-500">
+                  <div className="font-bold">{s.device_info?.platform ?? "—"}</div>
+                  <div className="text-xs text-muted">
                     {formatDateTime(s.created_at, undefined, locale)} · {s.ip ?? ""}
                   </div>
                 </div>
