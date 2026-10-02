@@ -52,7 +52,7 @@ export type Branch = {
   is_open_now?: boolean;
 };
 
-export type Room = { id: string; branch_id: string; name: string; type: string; capacity: number | null; status: string; position: number | null };
+export type Room = { id: string; branch_id: string; name: string; type: string; capacity: number | null; status: string; position: number | null; grid_cols: number; grid_rows: number; decor?: { kind: "ENTRANCE" | "CASHIER" | "WALL" | "AISLE" | "TV" | "WC"; x: number; y: number }[] };
 
 export type StaffRow = {
   id: string;
@@ -164,6 +164,7 @@ export type LiveDevice = {
 };
 
 export type LiveSnapshot = {
+  rooms?: Room[];
   branch: { id: string; name: string; club_id: string; club_name: string; timezone: string };
   stats: { today_revenue: number; active_sessions: number; free_devices: number; upcoming_bookings: number; total_devices: number };
   devices: LiveDevice[];

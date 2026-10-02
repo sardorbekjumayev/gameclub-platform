@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
 import { CancellationPolicy, DEFAULT_CANCELLATION_POLICY, refundPercent } from '../../common/domain/price-engine';
+import { bestGroup } from '../../common/domain/seat-groups';
 import { isWithinHours, openIntervals, WorkingHours } from '../../common/domain/working-hours';
 import { AppException } from '../../common/errors';
 import { Paginated } from '../../common/interceptors/response.interceptor';
@@ -168,7 +169,30 @@ export class BookingsService {
       cats.set(d.category.id, c);
     }
     const anyFree = result.some((d) => d.status === 'AVAILABLE');
+    // O'rindiq sxemasi uchun xonalar: grid o'lchami, xona tarifi, bo'sh joylar soni
+    const roomRows = await this.prisma.rooms.findMany({
+      where: { branch_id: branchId, deleted_at: null, status: 'ACTIVE' },
+      orderBy: [{ position: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, type: true, description: true, grid_cols: true, grid_rows: true, decor: true },
+    });
+    const rooms = roomRows.map((r) => {
+      const inRoom = result.filter((d) => d.room?.id === r.id);
+      const tariff = tariffs.find((tr) => tr.room_id === r.id);
+      const prices = inRoom.map((d) => d.price_quote?.amount).filter((a): a is bigint => a != null);
+      return {
+        ...r,
+        tariff: tariff ? { id: tariff.id, name: tariff.name, price_per_hour: tariff.price_per_hour } : null,
+        price_from: prices.length ? prices.reduce((a, b) => (b < a ? b : a)) : null,
+        total_count: inRoom.length,
+        available_count: inRoom.filter((d) => d.status === 'AVAILABLE').length,
+        // Do'stlar uchun: 2..5 kishiga eng yaxshi yonma-yon joylar
+        together: Object.fromEntries(
+          [2, 3, 4, 5].map((n) => [n, bestGroup(inRoom.filter((d) => d.status === 'AVAILABLE' && d.price_quote && d.layout).map((d) => ({ id: d.id, ...(d.layout as { x: number; y: number }) })), n)]),
+        ),
+      };
+    });
     return {
+      rooms,
       branch_id: branchId,
       start_at: start.toISOString(),
       end_at: end.toISOString(),

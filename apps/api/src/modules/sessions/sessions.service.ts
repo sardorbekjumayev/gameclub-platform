@@ -439,7 +439,14 @@ export class SessionsService {
       this.prisma.refunds.aggregate({ where: { club_id: branch.club_id, payment_id: { in: (await this.prisma.payments.findMany({ where: { branch_id: branchId }, select: { id: true } })).map((p) => p.id) }, created_at: { gte: dayStart } }, _sum: { amount: true } }),
     ]);
     const shift = await this.prisma.cash_shifts.findFirst({ where: { operator_id: caller.id, branch_id: branchId, status: 'OPEN' } });
+    // Zal sxemasi uchun xonalar (grid o'lchami + bezaklar)
+    const rooms = await this.prisma.rooms.findMany({
+      where: { branch_id: branchId, deleted_at: null },
+      orderBy: [{ position: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, type: true, grid_cols: true, grid_rows: true, decor: true },
+    });
     return {
+      rooms,
       branch: { id: branch.id, name: branch.name, club_id: branch.club_id, club_name: branch.club.name, timezone: tz },
       stats: {
         today_revenue: (paid._sum.amount ?? 0n) - (refunds._sum.amount ?? 0n),

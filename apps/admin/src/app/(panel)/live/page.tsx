@@ -8,7 +8,7 @@ import { QrScanner } from "@/components/live/qr-scanner";
 import { ShiftPanel } from "@/components/live/shift-panel";
 import { fmtClock, fmtTime } from "@/components/live/time";
 import { Empty, LoadState } from "@/components/status";
-import { HallLayout } from "@/components/hall-layout";
+import { type Decor, RoomsView } from "@/components/room-editor";
 import { Alert, Button, Card, Chip, Heading, Input, Stat, cx } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { useLiveBranch } from "@/lib/live-socket";
@@ -183,8 +183,20 @@ function Board({ branchId }: { branchId: string }) {
           {d.devices.length === 0 ? (
             <Empty>{t("device.empty")}</Empty>
           ) : view === "map" ? (
-            <HallLayout
-              devices={d.devices.map((x) => ({ id: x.id, name: x.name, room: x.room, layout: x.layout ?? null, tone: TONE[x.occupancy].tile, sub: x.occupancy === "UNAVAILABLE" ? t(`status.${x.operational_status}` as never) : t(`occupancy.${x.occupancy}` as never) }))}
+            <RoomsView
+              rooms={(d.rooms ?? []).map((r) => ({ ...r, decor: (r.decor ?? []) as Decor[] }))}
+              tiles={d.devices.map((x) => ({
+                id: x.id,
+                name: x.name,
+                roomId: x.room?.id ?? null,
+                x: x.layout?.x ?? 0,
+                y: x.layout?.y ?? 0,
+                tone: TONE[x.occupancy].tile,
+                sub: x.occupancy === "UNAVAILABLE" ? t(`status.${x.operational_status}` as never) : t(`occupancy.${x.occupancy}` as never),
+                badge: remainingBadge(x, now),
+              }))}
+              decorLabel={(k) => t(`seatmap.decor.${k}` as never)}
+              noRoomLabel={t("layout.noRoom")}
               onSelect={(id) => setSelected(id)}
             />
           ) : (
@@ -367,4 +379,12 @@ function CheckInModal({ scan: initialScan, onDone, onClose, errorText }: { scan?
       </form>
     </Modal>
   );
+}
+
+/** Tile ostidagi qisqa matn: band joyda qolgan vaqt, bron qilinganda boshlanish vaqti. */
+function remainingBadge(d: LiveDevice, now: number): string | undefined {
+  const sec = remainingNow(d, now);
+  if (sec != null) return fmtClock(sec);
+  if (d.next_booking) return fmtTime(d.next_booking.start_at);
+  return undefined;
 }

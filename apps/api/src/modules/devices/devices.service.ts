@@ -178,8 +178,19 @@ export class DevicesService {
 
   async layout(branchId: string, dto: LayoutDto, grants: Grant[], actor: Actor) {
     const b = await this.branches.load(branchId, grants, 'devices.update');
+    // Ko'chirilayotgan xona shu filialniki bo'lishi shart (scope)
+    const roomIds = [...new Set(dto.items.map((i) => i.room_id).filter((r): r is string => !!r))];
+    if (roomIds.length) {
+      const ok = await this.prisma.rooms.count({ where: { id: { in: roomIds }, branch_id: b.id, deleted_at: null } });
+      if (ok !== roomIds.length) throw new AppException('VALIDATION_ERROR', 'Room does not belong to branch', { field: 'room_id' });
+    }
     const res = await this.prisma.$transaction(
-      dto.items.map((i) => this.prisma.devices.updateMany({ where: { id: i.device_id, branch_id: b.id, deleted_at: null }, data: { layout: { x: i.x, y: i.y } } })),
+      dto.items.map((i) =>
+        this.prisma.devices.updateMany({
+          where: { id: i.device_id, branch_id: b.id, deleted_at: null },
+          data: { layout: { x: i.x, y: i.y }, ...(i.room_id !== undefined ? { room_id: i.room_id } : {}) },
+        }),
+      ),
     );
     const skipped = dto.items.filter((_, k) => res[k].count === 0).map((i) => i.device_id);
     await this.audit.log({ actor_id: actor.id, club_id: b.club_id, action: 'branch.layout', target_type: 'branch', target_id: b.id, new_value: { items: dto.items.length, skipped: skipped.length } });
@@ -270,6 +281,23 @@ export class DevicesService {
     });
     await this.audit.log({ actor_id: actor.id, club_id: t.club_id, action: 'tariff.update', target_type: 'tariff', target_id: id, old_value: t, new_value: dto, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
     return this.prisma.tariffs.findUnique({ where: { id }, include: { rules: true } });
+  }
+
+  async roomTariff(roomId: string, tariffId: string | null, grants: Grant[], actor: Actor) {
+    const room = await this.prisma.rooms.findFirst({ where: { id: roomId, deleted_at: null } });
+    if (!room) throw new AppException('NOT_FOUND', 'Room not found');
+    assertCan(grants, 'tariffs.update', { club_id: room.club_id, branch_id: room.branch_id });
+    if (tariffId) {
+      const t = await this.prisma.tariffs.findFirst({ where: { id: tariffId, branch_id: room.branch_id, deleted_at: null } });
+      if (!t) throw new AppException('NOT_FOUND', 'Tariff not found');
+    }
+    await this.prisma.$transaction(async (tx) => {
+      // Xonada bitta tarif: eskisi xonadan ajratiladi va o'chiriladi (boshqa qurilmalarga tarqab ketmasligi uchun)
+      await tx.tariffs.updateMany({ where: { room_id: roomId, deleted_at: null, ...(tariffId ? { id: { not: tariffId } } : {}) }, data: { room_id: null, is_active: false } });
+      if (tariffId) await tx.tariffs.update({ where: { id: tariffId }, data: { room_id: roomId, category_id: null, device_id: null, device_type: null, is_active: true } });
+    });
+    await this.audit.log({ actor_id: actor.id, club_id: room.club_id, action: 'room.tariff', target_type: 'room', target_id: roomId, new_value: { tariff_id: tariffId } });
+    return { room_id: roomId, tariff_id: tariffId };
   }
 
   async removeTariff(id: string, grants: Grant[], actor: Actor) {

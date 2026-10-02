@@ -16,7 +16,7 @@ export class CreateBookingDto {
   @ApiProperty() @IsUUID() branch_id!: string;
   @ApiProperty() @IsDateString() start_at!: string;
   @ApiProperty() @IsInt() @Min(15) @Max(1440) duration_minutes!: number;
-  @ApiProperty({ type: [BookingItemDto] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => BookingItemDto) items!: BookingItemDto[];
+  @ApiProperty({ type: [BookingItemDto], description: 'Bir bronda ko\'pi bilan 5 o\'rindiq' }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(5) @ValidateNested({ each: true }) @Type(() => BookingItemDto) items!: BookingItemDto[];
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) promo_code?: string;
   @ApiPropertyOptional({ enum: ['APP', 'WEB', 'PHONE'] }) @IsOptional() @IsIn(['APP', 'WEB', 'PHONE']) source?: string;
   @ApiPropertyOptional({ enum: ['ONLINE', 'AT_CLUB'], description: 'AT_CLUB — klubda to\'lash (klub ruxsat bersa)' }) @IsOptional() @IsIn(['ONLINE', 'AT_CLUB']) payment_mode?: string;

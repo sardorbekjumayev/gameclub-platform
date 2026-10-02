@@ -43,19 +43,51 @@ body {
   opacity: 0.6;
 }
 .gc-pin {
-  display: inline-block;
-  transform: translate(-50%, -50%);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* Pastki uchi aynan klub koordinatasida turadi */
+  transform: translate(-50%, calc(-100% - 10px));
   white-space: nowrap;
-  padding: 6px 10px;
+  padding: 7px 12px 7px 9px;
   border-radius: 999px;
-  background: var(--color-surface-3);
-  border: 1px solid #3a4052;
-  color: var(--color-fg);
-  font: 700 13px var(--font-sans);
+  background: #0e0f13;
+  border: 2px solid var(--color-accent);
+  color: #fff;
+  font: 800 14px var(--font-sans);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), 0 0 0 4px rgba(198, 255, 61, 0.18);
   cursor: pointer;
+  transition: transform 0.15s;
+}
+.gc-pin::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 8px var(--color-accent);
+}
+.gc-pin::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+  border-bottom: 0;
+  border-top: 10px solid var(--color-accent);
+}
+.gc-pin:hover {
+  transform: translate(-50%, calc(-100% - 10px)) scale(1.08);
+  z-index: 10;
 }
 .gc-pin--active {
   background: var(--color-accent);
-  border-color: var(--color-accent);
   color: var(--color-on-accent);
+  transform: translate(-50%, calc(-100% - 10px)) scale(1.12);
+}
+.gc-pin--active::before {
+  background: var(--color-on-accent);
+  box-shadow: none;
 }

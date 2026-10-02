@@ -3,6 +3,7 @@
 import { formatMoney } from "@gc/types";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { SeatMap } from "@/components/seat-map";
 import { Alert, Button, Card, Input, Spinner, cx } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { durationLabel, fmtDate, fmtTime, tzDate } from "@/lib/format";
@@ -179,35 +180,22 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
       {start && (
         <section className="space-y-2">
           <div className="flex items-baseline justify-between">
-            <div className="text-[13px] font-semibold text-muted">{t("book.device")}</div>
-            <div className="text-xs text-muted">{t("book.upToN", { n: MAX_DEVICES })}</div>
+            <div className="text-[13px] font-semibold text-muted">{t("seat.title")}</div>
+            <div className={cx("text-xs tabular-nums", picked.length ? "font-bold text-accent" : "text-muted")}>{t("seat.pickedOf", { n: picked.length, max: MAX_DEVICES })}</div>
           </div>
           {avail.loading ? (
             <Spinner className="mx-auto h-5 w-5" />
           ) : avail.error ? (
             <Alert>{avail.error}</Alert>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {devices.map((d) => {
-                const free = d.status === "AVAILABLE" && d.price_quote;
-                const on = picked.includes(d.id);
-                return (
-                  <button
-                    key={d.id}
-                    disabled={!free}
-                    onClick={() => setPicked(on ? picked.filter((x) => x !== d.id) : picked.length < MAX_DEVICES ? [...picked, d.id] : picked)}
-                    className={cx(
-                      "rounded-xl p-2 text-left text-xs disabled:cursor-not-allowed disabled:opacity-30",
-                      on ? "bg-accent text-on-accent" : "border border-line bg-surface-2",
-                    )}
-                  >
-                    <div className="font-bold">{d.name}</div>
-                    <div className={on ? "" : "text-muted"}>{d.category?.name ?? t(`deviceType.${d.type}` as never)}</div>
-                    {d.price_quote && <div className="mt-1 font-semibold tabular-nums">{formatMoney(d.price_quote.amount, locale)}</div>}
-                  </button>
-                );
-              })}
-            </div>
+            <SeatMap
+              rooms={avail.data?.rooms ?? []}
+              devices={devices}
+              picked={picked}
+              max={MAX_DEVICES}
+              onToggle={(id) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : picked.length < MAX_DEVICES ? [...picked, id] : picked)}
+              onPickGroup={(ids) => setPicked(ids.slice(0, MAX_DEVICES))}
+            />
           )}
         </section>
       )}

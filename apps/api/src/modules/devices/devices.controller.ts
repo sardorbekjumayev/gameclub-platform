@@ -10,7 +10,7 @@ import { type Grant } from '../rbac/rbac.service';
 import { AppException } from '../../common/errors';
 import { PrismaService } from '../../database/prisma.service';
 import {
-  BulkDevicesDto, CategoryDto, DeviceDto, DeviceStatusDto, LayoutDto, MaintenanceDto, PriceQuoteDto, TariffDto, UpdateDeviceDto, UpdateMaintenanceDto, UpdateTariffDto,
+  BulkDevicesDto, CategoryDto, DeviceDto, DeviceStatusDto, LayoutDto, MaintenanceDto, PriceQuoteDto, RoomTariffDto, TariffDto, UpdateDeviceDto, UpdateMaintenanceDto, UpdateTariffDto,
 } from './dto/devices.dto';
 import { DevicesService } from './devices.service';
 
@@ -109,6 +109,10 @@ export class DevicesController {
   @Patch('tariffs/:id') @RequirePermission('tariffs.update')
   updateTariff(@Param('id', uuid) id: string, @Body() dto: UpdateTariffDto, @Grants() g: Grant[], @CurrentActor() a: Actor) {
     return this.devices.updateTariff(id, dto, g, a);
+  }
+  @Put('rooms/:id/tariff') @RequirePermission('tariffs.update') @ApiOperation({ summary: 'Xonaga tarif biriktirish (xonadagi barcha o\'rindiqlar shu narxda)' })
+  roomTariff(@Param('id', uuid) id: string, @Body() dto: RoomTariffDto, @Grants() g: Grant[], @CurrentActor() a: Actor) {
+    return this.devices.roomTariff(id, dto.tariff_id, g, a);
   }
   @Delete('tariffs/:id') @RequirePermission('tariffs.delete')
   removeTariff(@Param('id', uuid) id: string, @Grants() g: Grant[], @CurrentActor() a: Actor) {

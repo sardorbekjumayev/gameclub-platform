@@ -44,7 +44,7 @@ export class AdminCreateClubDto extends CreateClubDto {
   @ApiProperty() @Matches(PHONE) owner_phone!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) owner_first_name?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) owner_last_name?: string;
-  @ApiPropertyOptional({ description: 'Darhol ACTIVE qilish' }) @IsOptional() @IsBoolean() activate?: boolean;
+  @ApiPropertyOptional({ description: 'Default true — klub moderatsiyasiz darhol ACTIVE; false — DRAFT', default: true }) @IsOptional() @IsBoolean() activate?: boolean;
 }
 
 export class ClubListQuery extends PageQuery {
@@ -128,6 +128,12 @@ export class HoursExceptionDto {
 }
 
 // ---- Room ----
+export const DECOR_KINDS = ['ENTRANCE', 'CASHIER', 'WALL', 'AISLE', 'TV', 'WC'] as const;
+export class RoomDecorDto {
+  @ApiProperty({ enum: DECOR_KINDS }) @IsIn(DECOR_KINDS) kind!: string;
+  @ApiProperty() @IsInt() @Min(0) @Max(39) x!: number;
+  @ApiProperty() @IsInt() @Min(0) @Max(39) y!: number;
+}
 export const ROOM_TYPES = ['STANDARD', 'VIP', 'BOOTCAMP', 'CONSOLE', 'STREAM'] as const;
 export class CreateRoomDto {
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(80) name!: string;
@@ -135,6 +141,9 @@ export class CreateRoomDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(500) capacity?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) description?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() position?: number;
+  @ApiPropertyOptional({ description: 'Sxema eni (katak)' }) @IsOptional() @IsInt() @Min(2) @Max(40) grid_cols?: number;
+  @ApiPropertyOptional({ description: 'Sxema bo\'yi (katak)' }) @IsOptional() @IsInt() @Min(2) @Max(40) grid_rows?: number;
+  @ApiPropertyOptional({ type: [RoomDecorDto], description: 'Sxema bezaklari (kirish, kassa, devor...)' }) @IsOptional() @IsArray() @ArrayMaxSize(400) @ValidateNested({ each: true }) @Type(() => RoomDecorDto) decor?: RoomDecorDto[];
 }
 export class UpdateRoomDto extends CreateRoomDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(1) @MaxLength(80) declare name: string;

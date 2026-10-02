@@ -48,6 +48,7 @@ export type Slot = { start_at: string; available_count: number };
 export type Slots = { date: string; timezone: string; slot_minutes: number; total_devices: number; slots: Slot[] };
 
 export type AvailDevice = {
+  layout?: { x: number; y: number } | null;
   id: string;
   name: string;
   type: string;
@@ -57,7 +58,22 @@ export type AvailDevice = {
   status: "AVAILABLE" | "BUSY" | "UNAVAILABLE" | string;
   price_quote: { amount: number; tariff_name: string } | null;
 };
-export type Availability = { start_at: string; end_at: string; within_working_hours: boolean; hold_minutes: number; devices: AvailDevice[] };
+export type AvailRoom = {
+  id: string;
+  name: string;
+  type: string | null;
+  description: string | null;
+  grid_cols: number;
+  grid_rows: number;
+  tariff: { id: string; name: string; price_per_hour: number } | null;
+  price_from: number | null;
+  total_count: number;
+  available_count: number;
+  decor?: { kind: "ENTRANCE" | "CASHIER" | "WALL" | "AISLE" | "TV" | "WC"; x: number; y: number }[];
+  together?: Record<string, { device_ids: string[]; adjacent: boolean } | null>;
+};
+
+export type Availability = { rooms?: AvailRoom[]; start_at: string; end_at: string; within_working_hours: boolean; hold_minutes: number; devices: AvailDevice[] };
 
 export type Tariff = { id: string; name: string; device_type: string | null; price_per_hour: number; rules: { kind: string; days_of_week: number[]; start_time: string; end_time: string; price_per_hour: number }[] };
 

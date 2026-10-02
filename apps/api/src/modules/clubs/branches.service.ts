@@ -28,6 +28,12 @@ export const DEFAULT_BOOKING_SETTINGS = {
 export type BookingSettings = typeof DEFAULT_BOOKING_SETTINGS;
 export const bookingSettings = (b: { booking_settings: unknown }): BookingSettings => ({ ...DEFAULT_BOOKING_SETTINGS, ...((b.booking_settings as object) ?? {}) });
 
+/** Bezaklarni toza JSON qilib saqlash (faqat kind/x/y). */
+const roomData = <T extends CreateRoomDto>(dto: T) => {
+  const { decor, ...rest } = dto;
+  return { ...rest, ...(decor ? { decor: decor.map(({ kind, x, y }) => ({ kind, x, y })) } : {}) };
+};
+
 @Injectable()
 export class BranchesService {
   constructor(
@@ -186,7 +192,7 @@ export class BranchesService {
 
   async createRoom(branchId: string, dto: CreateRoomDto, grants: Grant[], actor: Actor) {
     const b = await this.load(branchId, grants, 'rooms.create');
-    const room = await this.prisma.rooms.create({ data: { id: uuidv7(), branch_id: branchId, club_id: b.club_id, ...dto } });
+    const room = await this.prisma.rooms.create({ data: { id: uuidv7(), branch_id: branchId, club_id: b.club_id, ...roomData(dto) } });
     await this.audit.log({ actor_id: actor.id, club_id: b.club_id, action: 'room.create', target_type: 'room', target_id: room.id, new_value: dto });
     return room;
   }
@@ -200,7 +206,7 @@ export class BranchesService {
 
   async updateRoom(roomId: string, dto: UpdateRoomDto, grants: Grant[], actor: Actor) {
     const r = await this.loadRoom(roomId, grants, 'rooms.update');
-    const room = await this.prisma.rooms.update({ where: { id: roomId }, data: dto });
+    const room = await this.prisma.rooms.update({ where: { id: roomId }, data: roomData(dto) });
     await this.audit.log({ actor_id: actor.id, club_id: r.club_id, action: 'room.update', target_type: 'room', target_id: roomId, new_value: dto });
     return room;
   }

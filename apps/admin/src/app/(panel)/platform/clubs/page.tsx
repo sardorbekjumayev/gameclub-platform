@@ -1,13 +1,16 @@
 "use client";
 
 import { formatDateTime } from "@gc/types";
+import { Check, Plus } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Empty, LoadState, StatusBadge } from "@/components/status";
-import { Button, Card, Chip, Heading } from "@/components/ui";
-import { useI18n } from "@/i18n/provider";
+import { Alert, Button, Card, Chip, Field, Heading, Input } from "@/components/ui";
+import { useErrorText, useI18n } from "@/i18n/provider";
+import { session } from "@/lib/session";
 import type { Club } from "@/lib/types";
-import { useApi } from "@/lib/use-api";
+import { normalizePhone, useApi } from "@/lib/use-api";
 
 const FILTERS = ["PENDING_APPROVAL", "ACTIVE", "DRAFT", "REJECTED", "SUSPENDED", ""] as const;
 const LIMIT = 20;
@@ -20,10 +23,36 @@ export default function ClubApprovalsPage() {
   const params = new URLSearchParams({ page: String(page), limit: String(LIMIT), ...(status && { status }) });
   const { data, meta, loading, error, reload } = useApi<Club[]>(`/admin/clubs?${params}`);
   const pages = Math.max(1, Math.ceil((meta?.total ?? 0) / LIMIT));
+  const errorText = useErrorText();
+  const [creating, setCreating] = useState(false);
+  const [approving, setApproving] = useState<string | null>(null);
+  const [error2, setError2] = useState<string | null>(null);
+
+  async function approve(id: string) {
+    setApproving(id);
+    setError2(null);
+    try {
+      await session.post(`/admin/clubs/${id}/approve`, {});
+      reload();
+    } catch (e) {
+      setError2(errorText(e));
+    } finally {
+      setApproving(null);
+    }
+  }
 
   return (
     <div className="space-y-4">
-      <Heading>{t("approvals.title")}</Heading>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Heading>{t("approvals.title")}</Heading>
+        {!creating && (
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" /> {t("clubCreate.button")}
+          </Button>
+        )}
+      </div>
+      {creating && <CreateClubForm onCancel={() => setCreating(false)} />}
+      {error2 && <Alert>{error2}</Alert>}
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
           <Chip
@@ -51,6 +80,7 @@ export default function ClubApprovalsPage() {
                 <th className="px-4 py-3">{t("club.documents")}</th>
                 <th className="px-4 py-3">{t("users.col.status")}</th>
                 <th className="px-4 py-3">{t("users.col.created")}</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -68,6 +98,13 @@ export default function ClubApprovalsPage() {
                     <StatusBadge status={c.status} />
                   </td>
                   <td className="px-4 py-3 text-muted">{formatDateTime(c.created_at, undefined, locale)}</td>
+                  <td className="px-4 py-3 text-right">
+                    {c.status === "PENDING_APPROVAL" && (
+                      <Button size="sm" loading={approving === c.id} disabled={!!approving} onClick={() => approve(c.id)}>
+                        <Check className="h-4 w-4" /> {t("approvals.action.approve")}
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -86,5 +123,77 @@ export default function ClubApprovalsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Super admin klubni egasi nomidan qo'shadi — klub darhol ACTIVE (moderatsiyasiz), sinov muddati avtomatik boshlanadi. */
+function CreateClubForm({ onCancel }: { onCancel: () => void }) {
+  const { t } = useI18n();
+  const errorText = useErrorText();
+  const router = useRouter();
+  const [f, setF] = useState({ name: "", phone: "", owner_phone: "", owner_first_name: "", owner_last_name: "", owner_password: "" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await session.post<{ id: string }>("/admin/clubs", {
+        name: f.name.trim(),
+        owner_phone: normalizePhone(f.owner_phone),
+        activate: true,
+        ...(f.phone.trim() && { phone: normalizePhone(f.phone) }),
+        ...(f.owner_first_name.trim() && { owner_first_name: f.owner_first_name.trim() }),
+        ...(f.owner_last_name.trim() && { owner_last_name: f.owner_last_name.trim() }),
+        ...(f.owner_password && { owner_password: f.owner_password }),
+      });
+      router.push(`/platform/clubs/${res.data.id}`);
+    } catch (err) {
+      setError(errorText(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <div className="font-display text-lg font-bold">{t("clubCreate.title")}</div>
+          <p className="text-sm text-muted">{t("clubCreate.hint")}</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label={t("club.name")}>
+            <Input required minLength={2} maxLength={120} value={f.name} onChange={set("name")} />
+          </Field>
+          <Field label={t("clubCreate.clubPhone")}>
+            <Input type="tel" placeholder="+998 90 123 45 67" value={f.phone} onChange={set("phone")} />
+          </Field>
+          <Field label={t("clubCreate.ownerPhone")}>
+            <Input required type="tel" placeholder="+998 90 123 45 67" value={f.owner_phone} onChange={set("owner_phone")} />
+          </Field>
+          <Field label={t("clubCreate.ownerPassword")} hint={t("clubCreate.ownerPasswordHint")}>
+            <Input type="password" minLength={8} maxLength={128} autoComplete="new-password" value={f.owner_password} onChange={set("owner_password")} />
+          </Field>
+          <Field label={t("clubCreate.ownerFirstName")}>
+            <Input maxLength={80} value={f.owner_first_name} onChange={set("owner_first_name")} />
+          </Field>
+          <Field label={t("clubCreate.ownerLastName")}>
+            <Input maxLength={80} value={f.owner_last_name} onChange={set("owner_last_name")} />
+          </Field>
+        </div>
+        {error && <Alert>{error}</Alert>}
+        <div className="flex gap-2">
+          <Button type="submit" loading={busy}>
+            {t("clubCreate.submit")}
+          </Button>
+          <Button type="button" variant="secondary" onClick={onCancel} disabled={busy}>
+            {t("common.cancel")}
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }

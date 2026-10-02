@@ -63,6 +63,7 @@ class LayoutItem {
   @IsUUID() device_id!: string;
   @IsInt() @Min(0) @Max(100) x!: number;
   @IsInt() @Min(0) @Max(100) y!: number;
+  @ApiPropertyOptional({ nullable: true, description: 'Qurilmani boshqa xonaga ko\'chirish (null — xonasiz)' }) @IsOptional() @IsUUID() room_id?: string | null;
 }
 export class LayoutDto {
   @ApiProperty({ type: [LayoutItem] }) @IsArray() @ArrayMaxSize(1000) @ValidateNested({ each: true }) @Type(() => LayoutItem) items!: LayoutItem[];
@@ -104,4 +105,8 @@ export class PriceQuoteDto {
   @ApiProperty() @IsDateString() start_at!: string;
   @ApiProperty() @IsInt() @Min(15) @Max(1440) duration_minutes!: number;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) promo_code?: string;
+}
+
+export class RoomTariffDto {
+  @ApiProperty({ nullable: true, description: 'Xona tarifi; null — biriktirmani olib tashlash' }) @IsOptional() @IsUUID() tariff_id!: string | null;
 }

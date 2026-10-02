@@ -214,3 +214,8 @@ Diqqat: `ST_MakePoint(longitude, latitude)` — tartib **lng, lat**.
 - Kunlik `pg_dump` + WAL arxiv (PITR), 30 kun saqlash; oyiga bir marta restore sinovi.
 - `otp_requests` 30 kun, `payment_events` 2 yil, `audit_logs` 2 yil, `outbox_events` (processed) 14 kun, `idempotency_keys` 48 soat.
 - Foydalanuvchi akkauntni o'chirsa: shaxsiy maydonlar anonimlashtiriladi (`phone`, `name`, `email`), moliyaviy yozuvlar saqlanadi.
+
+### rooms.grid_cols / grid_rows (migratsiya `20261001120000_room_seat_map`)
+Xona sxemasi o'lchami (default 10×5). Qurilma joyi `devices.layout {x,y}` — shu xona gridi ichidagi katak.
+### rooms.decor (migratsiya `20261001150000_room_decor`)
+`JSONB [{kind, x, y}]`, default `[]` — kirish, kassa, devor, yo'lak, TV, hojatxona kataklari.

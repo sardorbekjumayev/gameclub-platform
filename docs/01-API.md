@@ -568,3 +568,13 @@ Har bir phase'da: **API / Web / Mobile** vazifalari va Acceptance. (`[ ]` — ba
 
 ## 15. Definition of Done (feature)
 Migratsiya · DTO validatsiya · permission+scope · Swagger · idempotentlik (kerak joyda) · audit · testlar (unit+e2e+scope; concurrency kerak bo'lsa) · xato kodlari hujjatlangan · OpenAPI klient yangilangan · web/mobile UI holatlari (loading/empty/error) · commit.
+
+## Xona sxemasi va o'rindiq tanlash (2026-10-01)
+- `PATCH /rooms/:id` — `grid_cols`, `grid_rows` (2..40): xona sxemasi o'lchami (katak).
+- `PUT /branches/:id/layout` — `items[].room_id` (ixtiyoriy, null — xonasiz): qurilmani boshqa xonaga ko'chirish; xona shu filialniki bo'lishi shart.
+- `PUT /rooms/:id/tariff` `{ tariff_id | null }` (`tariffs.update`) — xonaga bitta tarif; eski xona tarifi xonadan ajratilib nofaol qilinadi, tanlangan tarif faqat shu xonaga bog'lanadi.
+- `GET /branches/:id/availability` javobida `rooms[]`: `grid_cols/rows`, `tariff`, `price_from`, `total_count`, `available_count`; qurilmalarda `room` + `layout {x,y}` — klient o'rindiq sxemasini chizadi.
+- `POST /bookings` — bir bronda ko'pi bilan 5 o'rindiq (`items` ≤ 5).
+- `PATCH /rooms/:id` — `decor: [{kind: ENTRANCE|CASHIER|WALL|AISLE|TV|WC, x, y}]` (sxema bezaklari).
+- Availability `rooms[].decor` va `rooms[].together["2".."5"] = { device_ids, adjacent } | null` — do'stlar uchun API tanlagan yonma-yon joylar (`common/domain/seat-groups.ts`: avval bir qatorda ketma-ket, bo'lmasa eng yaqin guruh).
+- `GET /branches/:id/live` javobida `rooms[]` (grid + decor) — operator jonli zali mijoz ko'radigan sxema bilan bir xil.

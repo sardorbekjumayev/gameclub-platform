@@ -303,6 +303,9 @@ model rooms {
   description String?
   status      String    @default("ACTIVE")
   position    Int       @default(0)
+  grid_cols   Int       @default(10)
+  grid_rows   Int       @default(5)
+  decor       Json      @default("[]") // [{kind: ENTRANCE|CASHIER|WALL|AISLE|TV|WC, x, y}]
   created_at  DateTime  @default(now()) @db.Timestamptz
   updated_at  DateTime  @updatedAt @db.Timestamptz
   deleted_at  DateTime? @db.Timestamptz

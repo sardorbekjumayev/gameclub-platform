@@ -70,7 +70,7 @@ export const yandexMaps: MapProvider = {
           const pm = new ymaps.Placemark(
             toLL(m.position),
             { label: m.label, active: m.active },
-            { iconLayout: pill, iconShape: { type: "Rectangle", coordinates: [[-40, -16], [40, 16]] } },
+            { iconLayout: pill, iconShape: { type: "Rectangle", coordinates: [[-60, -50], [60, 0]] } },
           );
           pm.events.add("click", () => opts.onMarkerClick?.(m.id));
           markers.add(pm);

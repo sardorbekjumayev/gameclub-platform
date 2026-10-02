@@ -195,7 +195,7 @@ export class ClubsService {
         });
       }
       if (dto.owner_password) await tx.users.update({ where: { id: owner.id }, data: { password_hash: await argon2.hash(dto.owner_password, { type: argon2.argon2id }) } });
-      const c = await this.createClubRecord(tx, owner.id, clubDto, activate ? 'ACTIVE' : 'DRAFT', actor.id);
+      const c = await this.createClubRecord(tx, owner.id, clubDto, activate === false ? 'DRAFT' : 'ACTIVE', actor.id); // super admin qo'shgani moderatsiyasiz faol
       await this.audit.log({ actor_id: actor.id, club_id: c.id, action: 'admin.club.create', target_type: 'club', target_id: c.id, new_value: { name: c.name, owner_phone }, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id }, tx);
       return { club: c, owner_id: owner.id };
     });
