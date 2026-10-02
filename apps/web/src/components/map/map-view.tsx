@@ -14,9 +14,10 @@ export function MapView({
   zoom = 12,
   markers,
   pin,
+  fit,
   className,
   ...events
-}: { center?: LatLng; zoom?: number; markers?: MapMarker[]; pin?: LatLng | null; className?: string } & MapEvents) {
+}: { center?: LatLng; zoom?: number; markers?: MapMarker[]; pin?: LatLng | null; fit?: LatLng[]; className?: string } & MapEvents) {
   const { t, locale } = useI18n();
   const el = useRef<HTMLDivElement>(null);
   const [handle, setHandle] = useState<MapHandle | null>(null);
@@ -54,8 +55,12 @@ export function MapView({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    handle?.setCenter({ lat: center.lat, lng: center.lng });
-  }, [handle, center.lat, center.lng]);
+    handle?.setCenter({ lat: center.lat, lng: center.lng }, zoom);
+  }, [handle, center.lat, center.lng, zoom]);
+
+  useEffect(() => {
+    if (fit) handle?.fitTo(fit);
+  }, [handle, fit]);
 
   useEffect(() => {
     handle?.setMarkers(markers ?? []);

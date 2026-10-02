@@ -1,5 +1,6 @@
 "use client";
 
+import type { LucideIcon } from "lucide-react";
 import { forwardRef } from "react";
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
@@ -64,11 +65,39 @@ export function Card({ className, children }: { className?: string; children: Re
 }
 
 /** Katta raqamli ko'rsatkich kartasi (admin live panel uslubi). */
-export function Stat({ label, value, accent }: { label: string; value: React.ReactNode; accent?: boolean }) {
+export function Stat({ label, value, accent, icon: Icon, hint }: { label: string; value: React.ReactNode; accent?: boolean; icon?: LucideIcon; hint?: React.ReactNode }) {
   return (
-    <div className="rounded-2xl bg-surface p-[18px]">
-      <div className="text-[13px] text-muted">{label}</div>
+    <div className="rounded-2xl border border-line-soft bg-surface p-[18px]">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[13px] text-muted">{label}</div>
+        {Icon && (
+          <span className={cx("grid h-8 w-8 place-items-center rounded-lg", accent ? "bg-accent/15 text-accent" : "bg-surface-2 text-muted")}>
+            <Icon className="h-4 w-4" />
+          </span>
+        )}
+      </div>
       <div className={cx("mt-1.5 font-display text-2xl font-bold tabular-nums", accent && "text-accent")}>{value}</div>
+      {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
+    </div>
+  );
+}
+
+/** Tezkor amal plitkasi (dashboard): ikona + sarlavha + izoh. */
+export function ActionTile({ icon: Icon, title, desc, tone = "default" }: { icon: LucideIcon; title: string; desc?: string; tone?: "default" | "accent" }) {
+  return (
+    <div
+      className={cx(
+        "group flex h-full items-start gap-3 rounded-2xl border p-4 transition",
+        tone === "accent" ? "border-accent/40 bg-accent/10 hover:bg-accent/15" : "border-line-soft bg-surface hover:border-line hover:bg-surface-2",
+      )}
+    >
+      <span className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-xl", tone === "accent" ? "bg-accent text-on-accent" : "bg-surface-3 text-accent")}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <div className="font-bold">{title}</div>
+        {desc && <div className="mt-0.5 text-[13px] leading-snug text-muted">{desc}</div>}
+      </div>
     </div>
   );
 }

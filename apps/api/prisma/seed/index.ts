@@ -41,9 +41,41 @@ async function seedSuperAdmin() {
   console.log(`Super admin: ${email}`);
 }
 
+/**
+ * Tarif rejalari (docs/02-DATABASE.md §6). Nomlar hujjatda bor; limit va narxlar hujjatda yo'q —
+ * VAQTINCHALIK qiymatlar, biznes tasdiqlagach yangilanadi. null — cheksiz. Narx tiyinda.
+ */
+const PLANS = [
+  { code: 'FREE', name: 'Free', price_per_month: 0n, limits: { branches: 1, devices: 10, staff: 3, analytics: false, online_booking: true, api_access: false, pc_agent: false } },
+  { code: 'STARTER', name: 'Starter', price_per_month: 29_900_000n, limits: { branches: 2, devices: 40, staff: 10, analytics: true, online_booking: true, api_access: false, pc_agent: false } },
+  { code: 'PRO', name: 'Pro', price_per_month: 79_900_000n, limits: { branches: 5, devices: 150, staff: 50, analytics: true, online_booking: true, api_access: true, pc_agent: true } },
+  { code: 'ENTERPRISE', name: 'Enterprise', price_per_month: 0n, limits: { branches: null, devices: null, staff: null, analytics: true, online_booking: true, api_access: true, pc_agent: true } },
+];
+
+async function seedPlans() {
+  for (const p of PLANS) {
+    await prisma.plans.upsert({ where: { code: p.code }, update: { name: p.name }, create: { id: uuidv7(), ...p } });
+  }
+}
+
+/** Dev: plans seed'dan oldin yaratilgan klublarga PRO sinov obunasi (30 kun). */
+async function backfillTrials() {
+  if (process.env.NODE_ENV === 'production') return;
+  const pro = await prisma.plans.findUniqueOrThrow({ where: { code: 'PRO' } });
+  const clubs = await prisma.clubs.findMany({ where: { deleted_at: null, subscriptions: { none: {} } }, select: { id: true } });
+  const now = new Date();
+  const end = new Date(now.getTime() + 30 * 86400_000);
+  for (const c of clubs) {
+    await prisma.subscriptions.create({ data: { id: uuidv7(), club_id: c.id, plan_id: pro.id, status: 'TRIALING', current_period_start: now, current_period_end: end, trial_ends_at: end } });
+  }
+  if (clubs.length) console.log(`Trial subscriptions: ${clubs.length}`);
+}
+
 async function main() {
   await seedRbac();
   await seedSuperAdmin();
+  await seedPlans();
+  await backfillTrials();
   console.log('Seed done');
 }
 

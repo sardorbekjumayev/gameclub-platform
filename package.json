@@ -5,7 +5,9 @@
   "scripts": {
     "dev:api": "pnpm --filter @gc/api dev",
     "dev:web": "pnpm --filter @gc/web dev",
-    "dev:admin": "pnpm --filter @gc/admin dev",
+    "dev:platform": "pnpm --filter @gc/admin dev:platform",
+    "dev:club": "pnpm --filter @gc/admin dev:club",
+    "dev:desk": "pnpm --filter @gc/admin dev:desk",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "test:e2e": "pnpm --filter @gc/api test:e2e",

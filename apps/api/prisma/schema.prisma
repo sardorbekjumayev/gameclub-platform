@@ -5,8 +5,8 @@ generator client {
 }
 
 datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ---------- 3.1 Identity va RBAC ----------
@@ -30,6 +30,7 @@ model users {
   booking_blocked_until DateTime? @db.Timestamptz
   totp_secret_enc       String?
   totp_enabled          Boolean   @default(false)
+  notification_prefs    Json      @default("{}")
   created_at            DateTime  @default(now()) @db.Timestamptz
   updated_at            DateTime  @updatedAt @db.Timestamptz
   deleted_at            DateTime? @db.Timestamptz
@@ -181,4 +182,680 @@ model idempotency_keys {
   updated_at      DateTime @updatedAt @db.Timestamptz
 
   @@unique([key, user_id, route])
+}
+
+// ---------- 3.2 Club, filial, xona ----------
+
+model clubs {
+  id                  String    @id @db.Uuid
+  owner_id            String    @db.Uuid
+  name                String
+  slug                String    @unique
+  logo_url            String? // files moduli (S3) kelguncha to'g'ridan-to'g'ri URL
+  cover_url           String?
+  description         String?
+  phone               String?
+  telegram            String?
+  instagram           String?
+  website             String?
+  rules               String?
+  amenities           String[]  @default([])
+  min_booking_minutes Int       @default(60)
+  cancellation_policy Json?
+  status              String    @default("DRAFT")
+  rejection_reason    String?
+  approved_by         String?   @db.Uuid
+  approved_at         DateTime? @db.Timestamptz
+  suspended_reason    String?
+  rating_avg          Decimal   @default(0) @db.Decimal(3, 2)
+  rating_count        Int       @default(0)
+  commission_bps      Int?
+  settings            Json?
+  created_at          DateTime  @default(now()) @db.Timestamptz
+  updated_at          DateTime  @updatedAt @db.Timestamptz
+  deleted_at          DateTime? @db.Timestamptz
+
+  branches      branches[]
+  subscriptions subscriptions[]
+  documents     club_documents[]
+}
+
+model club_documents {
+  id          String   @id @db.Uuid
+  club_id     String   @db.Uuid
+  type        String // LICENSE | TAX_ID | PASSPORT | OTHER
+  file_url    String
+  status      String   @default("PENDING")
+  reviewed_by String?  @db.Uuid
+  note        String?
+  created_at  DateTime @default(now()) @db.Timestamptz
+  updated_at  DateTime @updatedAt @db.Timestamptz
+  club        clubs    @relation(fields: [club_id], references: [id], onDelete: Cascade)
+
+  @@index([club_id])
+}
+
+model branches {
+  id               String    @id @db.Uuid
+  club_id          String    @db.Uuid
+  name             String
+  slug             String
+  address          String
+  address_details  Json?
+  // location geography(Point,4326) — migratsiyada raw SQL (Prisma qo'llamaydi)
+  latitude         Float
+  longitude        Float
+  phone            String?
+  description      String?
+  cover_url        String?
+  images           String[]  @default([])
+  amenities        String[]  @default([])
+  timezone         String    @default("Asia/Tashkent")
+  working_hours    Json
+  status           String    @default("ACTIVE")
+  booking_settings Json?
+  rating_avg       Decimal   @default(0) @db.Decimal(3, 2)
+  rating_count     Int       @default(0)
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  updated_at       DateTime  @updatedAt @db.Timestamptz
+  deleted_at       DateTime? @db.Timestamptz
+  club             clubs     @relation(fields: [club_id], references: [id])
+
+  rooms      rooms[]
+  devices    devices[]
+  exceptions branch_hours_exceptions[]
+
+  @@unique([club_id, slug])
+  @@index([club_id])
+}
+
+model branch_hours_exceptions {
+  id         String   @id @db.Uuid
+  branch_id  String   @db.Uuid
+  date       DateTime @db.Date
+  is_closed  Boolean  @default(true)
+  open_time  String?
+  close_time String?
+  reason     String?
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
+  branch     branches @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+
+  @@unique([branch_id, date])
+}
+
+model amenities {
+  id         String   @id @db.Uuid
+  code       String   @unique
+  name_i18n  Json
+  icon       String?
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
+}
+
+model rooms {
+  id          String    @id @db.Uuid
+  branch_id   String    @db.Uuid
+  club_id     String    @db.Uuid
+  name        String
+  type        String? // STANDARD | VIP | BOOTCAMP | CONSOLE | STREAM
+  capacity    Int?
+  description String?
+  status      String    @default("ACTIVE")
+  position    Int       @default(0)
+  created_at  DateTime  @default(now()) @db.Timestamptz
+  updated_at  DateTime  @updatedAt @db.Timestamptz
+  deleted_at  DateTime? @db.Timestamptz
+  branch      branches  @relation(fields: [branch_id], references: [id])
+  devices     devices[]
+
+  @@index([branch_id])
+}
+
+model staff_invitations {
+  id             String    @id @db.Uuid
+  club_id        String    @db.Uuid
+  branch_id      String?   @db.Uuid
+  role_id        String    @db.Uuid
+  phone_or_email String
+  token_hash     String    @unique
+  invited_by     String    @db.Uuid
+  expires_at     DateTime  @db.Timestamptz
+  accepted_at    DateTime? @db.Timestamptz
+  status         String    @default("PENDING")
+  created_at     DateTime  @default(now()) @db.Timestamptz
+  updated_at     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([club_id])
+}
+
+model customer_notes {
+  id         String   @id @db.Uuid
+  club_id    String   @db.Uuid
+  user_id    String   @db.Uuid
+  note       String
+  updated_by String?  @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
+
+  @@unique([club_id, user_id])
+}
+
+// ---------- 3.3 Qurilmalar ----------
+
+model device_categories {
+  id          String    @id @db.Uuid
+  club_id     String    @db.Uuid
+  branch_id   String?   @db.Uuid
+  name        String
+  device_type String
+  description String?
+  position    Int       @default(0)
+  created_at  DateTime  @default(now()) @db.Timestamptz
+  updated_at  DateTime  @updatedAt @db.Timestamptz
+  deleted_at  DateTime? @db.Timestamptz
+  devices     devices[]
+
+  @@index([club_id])
+}
+
+model devices {
+  id                 String               @id @db.Uuid
+  club_id            String               @db.Uuid
+  branch_id          String               @db.Uuid
+  room_id            String?              @db.Uuid
+  category_id        String?              @db.Uuid
+  name               String
+  type               String
+  specs              Json?
+  operational_status String               @default("ACTIVE")
+  connectivity       String               @default("UNKNOWN")
+  last_heartbeat_at  DateTime?            @db.Timestamptz
+  agent_id           String?
+  position_order     Int                  @default(0)
+  layout             Json?
+  created_at         DateTime             @default(now()) @db.Timestamptz
+  updated_at         DateTime             @updatedAt @db.Timestamptz
+  deleted_at         DateTime?            @db.Timestamptz
+  branch             branches             @relation(fields: [branch_id], references: [id])
+  room               rooms?               @relation(fields: [room_id], references: [id])
+  category           device_categories?   @relation(fields: [category_id], references: [id])
+  maintenance        device_maintenance[]
+
+  @@index([branch_id])
+}
+
+model device_maintenance {
+  id          String    @id @db.Uuid
+  device_id   String    @db.Uuid
+  club_id     String    @db.Uuid
+  reported_by String    @db.Uuid
+  title       String
+  description String?
+  status      String    @default("OPEN")
+  started_at  DateTime? @db.Timestamptz
+  resolved_at DateTime? @db.Timestamptz
+  created_at  DateTime  @default(now()) @db.Timestamptz
+  updated_at  DateTime  @updatedAt @db.Timestamptz
+  device      devices   @relation(fields: [device_id], references: [id])
+}
+
+// ---------- 3.4 Tariflar ----------
+
+model tariffs {
+  id             String         @id @db.Uuid
+  club_id        String         @db.Uuid
+  branch_id      String         @db.Uuid
+  name           String
+  device_type    String?
+  category_id    String?        @db.Uuid
+  room_id        String?        @db.Uuid
+  device_id      String?        @db.Uuid
+  price_per_hour BigInt
+  min_minutes    Int?
+  max_minutes    Int?
+  priority       Int            @default(0)
+  is_active      Boolean        @default(true)
+  valid_from     DateTime?      @db.Date
+  valid_to       DateTime?      @db.Date
+  created_at     DateTime       @default(now()) @db.Timestamptz
+  updated_at     DateTime       @updatedAt @db.Timestamptz
+  deleted_at     DateTime?      @db.Timestamptz
+  rules          tariff_rules[]
+
+  @@index([branch_id])
+}
+
+model tariff_rules {
+  id             String    @id @db.Uuid
+  tariff_id      String    @db.Uuid
+  days_of_week   Int[]     @db.SmallInt
+  start_time     String // HH:mm
+  end_time       String // HH:mm (kesib o'tuvchi bo'lishi mumkin)
+  price_per_hour BigInt
+  kind           String    @default("STANDARD")
+  date           DateTime? @db.Date
+  created_at     DateTime  @default(now()) @db.Timestamptz
+  updated_at     DateTime  @updatedAt @db.Timestamptz
+  tariff         tariffs   @relation(fields: [tariff_id], references: [id], onDelete: Cascade)
+}
+
+model promotions {
+  id                  String    @id @db.Uuid
+  club_id             String?   @db.Uuid
+  code                String    @unique
+  type                String // PERCENT | FIXED
+  value               BigInt // PERCENT: foiz; FIXED: tiyin
+  max_discount_amount BigInt?
+  min_order_amount    BigInt?
+  usage_limit         Int?
+  per_user_limit      Int?
+  used_count          Int       @default(0)
+  starts_at           DateTime? @db.Timestamptz
+  ends_at             DateTime? @db.Timestamptz
+  applies_to          Json?
+  funded_by           String    @default("CLUB")
+  is_active           Boolean   @default(true)
+  created_at          DateTime  @default(now()) @db.Timestamptz
+  updated_at          DateTime  @updatedAt @db.Timestamptz
+  deleted_at          DateTime? @db.Timestamptz
+}
+
+model promotion_redemptions {
+  id              String   @id @db.Uuid
+  promotion_id    String   @db.Uuid
+  user_id         String?  @db.Uuid
+  booking_id      String   @db.Uuid
+  discount_amount BigInt
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  @@unique([promotion_id, booking_id])
+}
+
+// ---------- 3.5 Bron va sessiya ----------
+
+model bookings {
+  id                  String           @id @db.Uuid
+  code                String           @unique
+  customer_id         String?          @db.Uuid
+  guest_name          String?
+  guest_phone         String?
+  club_id             String           @db.Uuid
+  branch_id           String           @db.Uuid
+  source              String
+  status              String
+  start_at            DateTime         @db.Timestamptz
+  end_at              DateTime         @db.Timestamptz
+  duration_minutes    Int
+  subtotal_amount     BigInt
+  discount_amount     BigInt           @default(0)
+  total_amount        BigInt
+  paid_amount         BigInt           @default(0)
+  payment_status      String           @default("UNPAID")
+  promotion_id        String?          @db.Uuid
+  hold_expires_at     DateTime?        @db.Timestamptz
+  cancelled_at        DateTime?        @db.Timestamptz
+  cancelled_by        String?          @db.Uuid
+  cancellation_reason String?
+  refund_amount       BigInt?
+  checked_in_at       DateTime?        @db.Timestamptz
+  checked_in_by       String?          @db.Uuid
+  no_show_marked_at   DateTime?        @db.Timestamptz
+  rescheduled_from_id String?          @db.Uuid
+  reschedule_count    Int              @default(0)
+  notes               String?
+  idempotency_key     String?
+  price_snapshot      Json?
+  created_at          DateTime         @default(now()) @db.Timestamptz
+  updated_at          DateTime         @updatedAt @db.Timestamptz
+  items               booking_items[]
+  events              booking_events[]
+
+  @@unique([customer_id, idempotency_key])
+  @@index([branch_id, start_at])
+  @@index([customer_id, start_at(sort: Desc)])
+  @@index([branch_id, status, start_at])
+}
+
+model booking_items {
+  id                    String   @id @db.Uuid
+  booking_id            String   @db.Uuid
+  club_id               String   @db.Uuid
+  branch_id             String   @db.Uuid
+  device_id             String   @db.Uuid
+  category_id           String?  @db.Uuid
+  requested_category_id String?  @db.Uuid
+  start_at              DateTime @db.Timestamptz
+  end_at                DateTime @db.Timestamptz
+  blocked_until         DateTime @db.Timestamptz
+  // time_range tstzrange GENERATED — migratsiyada raw SQL
+  active                Boolean  @default(true)
+  price_amount          BigInt
+  tariff_id             String?  @db.Uuid
+  price_breakdown       Json
+  created_at            DateTime @default(now()) @db.Timestamptz
+  updated_at            DateTime @updatedAt @db.Timestamptz
+  booking               bookings @relation(fields: [booking_id], references: [id], onDelete: Cascade)
+
+  @@index([device_id])
+}
+
+model booking_events {
+  id         String   @id @db.Uuid
+  booking_id String   @db.Uuid
+  type       String
+  actor_id   String?  @db.Uuid
+  data       Json?
+  at         DateTime @default(now()) @db.Timestamptz
+  booking    bookings @relation(fields: [booking_id], references: [id], onDelete: Cascade)
+
+  @@index([booking_id, at])
+}
+
+model sessions {
+  id                   String            @id @db.Uuid
+  club_id              String            @db.Uuid
+  branch_id            String            @db.Uuid
+  booking_id           String?           @db.Uuid
+  booking_item_id      String?           @db.Uuid
+  device_id            String            @db.Uuid
+  customer_id          String?           @db.Uuid
+  status               String
+  started_at           DateTime?         @db.Timestamptz
+  expected_end_at      DateTime?         @db.Timestamptz
+  ended_at             DateTime?         @db.Timestamptz
+  paused_at            DateTime?         @db.Timestamptz
+  total_paused_seconds Int               @default(0)
+  started_by           String?           @db.Uuid
+  ended_by             String?           @db.Uuid
+  end_reason           String?
+  overtime_minutes     Int?
+  created_at           DateTime          @default(now()) @db.Timestamptz
+  updated_at           DateTime          @updatedAt @db.Timestamptz
+  charges              session_charges[]
+
+  @@index([branch_id, status])
+}
+
+model session_charges {
+  id          String   @id @db.Uuid
+  session_id  String   @db.Uuid
+  type        String
+  minutes     Int?
+  amount      BigInt
+  description String?
+  payment_id  String?  @db.Uuid
+  created_by  String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz
+  session     sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
+}
+
+// ---------- 3.6 To'lov va moliya ----------
+
+model payments {
+  id                      String    @id @db.Uuid
+  booking_id              String?   @db.Uuid
+  session_id              String?   @db.Uuid
+  user_id                 String?   @db.Uuid
+  club_id                 String    @db.Uuid
+  branch_id               String?   @db.Uuid
+  amount                  BigInt
+  currency                String    @default("UZS")
+  method                  String
+  provider                String?
+  provider_transaction_id String?
+  provider_payload        Json?
+  status                  String
+  paid_at                 DateTime? @db.Timestamptz
+  failed_reason           String?
+  received_by             String?   @db.Uuid
+  shift_id                String?   @db.Uuid
+  idempotency_key         String?
+  commission_bps          Int?
+  commission_amount       BigInt?
+  club_amount             BigInt?
+  refunded_amount         BigInt    @default(0)
+  created_at              DateTime  @default(now()) @db.Timestamptz
+  updated_at              DateTime  @updatedAt @db.Timestamptz
+
+  @@index([club_id, paid_at])
+  @@index([booking_id])
+}
+
+model payment_events {
+  id              String    @id @db.Uuid
+  provider        String
+  event_id        String
+  payment_id      String?   @db.Uuid
+  raw             Json
+  signature_valid Boolean   @default(true)
+  processed_at    DateTime? @db.Timestamptz
+  created_at      DateTime  @default(now()) @db.Timestamptz
+
+  @@unique([provider, event_id])
+}
+
+model refunds {
+  id                 String    @id @db.Uuid
+  payment_id         String    @db.Uuid
+  booking_id         String?   @db.Uuid
+  club_id            String    @db.Uuid
+  amount             BigInt
+  reason             String?
+  status             String
+  provider_refund_id String?
+  initiated_by       String?   @db.Uuid
+  policy_snapshot    Json?
+  completed_at       DateTime? @db.Timestamptz
+  created_at         DateTime  @default(now()) @db.Timestamptz
+  updated_at         DateTime  @updatedAt @db.Timestamptz
+}
+
+model ledger_entries {
+  id         String   @id @db.Uuid
+  account    String // CUSTOMER | CLUB | PLATFORM | PROVIDER
+  account_id String?  @db.Uuid
+  direction  String // DEBIT | CREDIT
+  amount     BigInt
+  currency   String   @default("UZS")
+  ref_type   String
+  ref_id     String   @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  @@index([account, account_id, created_at])
+}
+
+model cash_shifts {
+  id                   String    @id @db.Uuid
+  club_id              String    @db.Uuid
+  branch_id            String    @db.Uuid
+  operator_id          String    @db.Uuid
+  opened_at            DateTime  @default(now()) @db.Timestamptz
+  closed_at            DateTime? @db.Timestamptz
+  opening_cash         BigInt
+  closing_cash_counted BigInt?
+  expected_cash        BigInt?
+  difference           BigInt?
+  status               String    @default("OPEN")
+  note                 String?
+  created_at           DateTime  @default(now()) @db.Timestamptz
+  updated_at           DateTime  @updatedAt @db.Timestamptz
+
+  @@index([branch_id, status])
+}
+
+// ---------- 3.7 Sharh, sevimli, qo'llab-quvvatlash ----------
+
+model reviews {
+  id              String    @id @db.Uuid
+  user_id         String    @db.Uuid
+  club_id         String    @db.Uuid
+  branch_id       String    @db.Uuid
+  booking_id      String    @unique @db.Uuid
+  rating          Int
+  text            String?
+  status          String    @default("VISIBLE")
+  reply_text      String?
+  replied_at      DateTime? @db.Timestamptz
+  reported_count  Int       @default(0)
+  moderated_by    String?   @db.Uuid
+  moderation_note String?
+  created_at      DateTime  @default(now()) @db.Timestamptz
+  updated_at      DateTime  @updatedAt @db.Timestamptz
+
+  @@index([branch_id, created_at])
+}
+
+model favorites {
+  user_id    String   @db.Uuid
+  branch_id  String   @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  @@id([user_id, branch_id])
+}
+
+model support_tickets {
+  id          String             @id @db.Uuid
+  user_id     String             @db.Uuid
+  club_id     String?            @db.Uuid
+  booking_id  String?            @db.Uuid
+  type        String
+  subject     String
+  status      String             @default("OPEN")
+  assigned_to String?            @db.Uuid
+  priority    String             @default("NORMAL")
+  created_at  DateTime           @default(now()) @db.Timestamptz
+  updated_at  DateTime           @updatedAt @db.Timestamptz
+  messages    support_messages[]
+
+  @@index([user_id])
+  @@index([status])
+}
+
+model support_messages {
+  id         String          @id @db.Uuid
+  ticket_id  String          @db.Uuid
+  sender_id  String          @db.Uuid
+  body       String
+  is_staff   Boolean         @default(false)
+  created_at DateTime        @default(now()) @db.Timestamptz
+  ticket     support_tickets @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+}
+
+// ---------- 3.8 Bildirishnoma, obuna, sozlamalar ----------
+
+model notifications {
+  id         String    @id @db.Uuid
+  user_id    String    @db.Uuid
+  type       String
+  title      String
+  body       String
+  data       Json?
+  channels   String[]  @default(["IN_APP"])
+  read_at    DateTime? @db.Timestamptz
+  sent_at    DateTime? @db.Timestamptz
+  dedupe_key String?
+  created_at DateTime  @default(now()) @db.Timestamptz
+
+  @@unique([user_id, dedupe_key])
+  @@index([user_id, read_at, created_at(sort: Desc)])
+}
+
+model announcements {
+  id         String    @id @db.Uuid
+  club_id    String?   @db.Uuid
+  title      String
+  body       String
+  audience   String    @default("ALL")
+  starts_at  DateTime? @db.Timestamptz
+  ends_at    DateTime? @db.Timestamptz
+  created_by String?   @db.Uuid
+  created_at DateTime  @default(now()) @db.Timestamptz
+  updated_at DateTime  @updatedAt @db.Timestamptz
+}
+
+model plans {
+  id              String          @id @db.Uuid
+  code            String          @unique
+  name            String
+  price_per_month BigInt
+  limits          Json
+  is_active       Boolean         @default(true)
+  created_at      DateTime        @default(now()) @db.Timestamptz
+  updated_at      DateTime        @updatedAt @db.Timestamptz
+  subscriptions   subscriptions[]
+}
+
+model subscriptions {
+  id                   String    @id @db.Uuid
+  club_id              String    @db.Uuid
+  plan_id              String    @db.Uuid
+  status               String
+  current_period_start DateTime  @db.Timestamptz
+  current_period_end   DateTime  @db.Timestamptz
+  cancel_at            DateTime? @db.Timestamptz
+  trial_ends_at        DateTime? @db.Timestamptz
+  created_at           DateTime  @default(now()) @db.Timestamptz
+  updated_at           DateTime  @updatedAt @db.Timestamptz
+  club                 clubs     @relation(fields: [club_id], references: [id])
+  plan                 plans     @relation(fields: [plan_id], references: [id])
+
+  @@index([club_id])
+}
+
+model club_payouts {
+  id                String    @id @db.Uuid
+  club_id           String    @db.Uuid
+  period_start      DateTime  @db.Timestamptz
+  period_end        DateTime  @db.Timestamptz
+  gross_amount      BigInt
+  commission_amount BigInt
+  refunds_amount    BigInt
+  net_amount        BigInt
+  status            String    @default("PENDING")
+  paid_at           DateTime? @db.Timestamptz
+  reference         String?
+  created_at        DateTime  @default(now()) @db.Timestamptz
+  updated_at        DateTime  @updatedAt @db.Timestamptz
+}
+
+model platform_settings {
+  id         String   @id @db.Uuid
+  key        String   @unique
+  value      Json
+  updated_by String?  @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
+}
+
+/// Telegram orqali OTP (login kodi botga yuboriladi). Telefon Telegram "kontakt ulashish" bilan tasdiqlanadi.
+model telegram_links {
+  id           String   @id @db.Uuid
+  phone        String   @unique
+  chat_id      BigInt   @unique
+  tg_user_id   BigInt
+  username     String?
+  first_name   String?
+  linked_at    DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @updatedAt @db.Timestamptz
+}
+
+model daily_branch_stats {
+  branch_id        String   @db.Uuid
+  club_id          String   @db.Uuid
+  date             DateTime @db.Date
+  bookings_count   Int      @default(0)
+  completed_count  Int      @default(0)
+  cancelled_count  Int      @default(0)
+  no_show_count    Int      @default(0)
+  gmv              BigInt   @default(0)
+  collected        BigInt   @default(0)
+  refunds          BigInt   @default(0)
+  commission       BigInt   @default(0)
+  session_minutes  Int      @default(0)
+  unique_customers Int      @default(0)
+  computed_at      DateTime @default(now()) @db.Timestamptz
+
+  @@id([branch_id, date])
+  @@index([club_id, date])
 }

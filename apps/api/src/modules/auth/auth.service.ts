@@ -80,6 +80,13 @@ export class AuthService {
     if (user.status === 'BLOCKED' || user.deleted_at) throw new AppException('FORBIDDEN', 'Account disabled');
   }
 
+  /** Taklif qabul qilingandan keyin sessiya ochish. */
+  async loginById(userId: string, meta: ReqMeta) {
+    const user = await this.prisma.users.findUniqueOrThrow({ where: { id: userId } });
+    this.assertActive(user);
+    return this.finishLogin(user, meta, false);
+  }
+
   private async finishLogin(user: { id: string; type: string }, meta: ReqMeta, isNew: boolean) {
     await this.prisma.users.update({ where: { id: user.id }, data: { last_login_at: new Date() } });
     const pair = await this.tokens.issuePair(user, meta);

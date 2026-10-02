@@ -1,3 +1,4 @@
+import { PrismaService } from '../../database/prisma.service';
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
@@ -34,11 +35,14 @@ export class JwtAuthGuard implements CanActivate {
   }
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class PermissionGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly rbac: RbacService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(ctx: ExecutionContext) {
@@ -50,6 +54,12 @@ export class PermissionGuard implements CanActivate {
     const grants = await this.rbac.grants(req.user.id);
     // Marshrut parametrlaridan scope; resursga bog'liq scope (masalan /devices/:id) service'da tekshiriladi.
     const scope = { club_id: req.params?.clubId ?? null, branch_id: req.params?.branchId ?? null };
+    // /branches/:branchId/... — klub darajasidagi rollar uchun filialning klubi aniqlanadi
+    if (scope.branch_id && !scope.club_id && UUID_RE.test(scope.branch_id)) {
+      const b = await this.prisma.branches.findFirst({ where: { id: scope.branch_id, deleted_at: null }, select: { club_id: true } });
+      if (!b) throw new AppException('NOT_FOUND', 'Branch not found');
+      scope.club_id = b.club_id;
+    }
     if (!RbacService.allows(grants, permission, scope)) {
       throw new AppException('FORBIDDEN', 'Permission denied');
     }

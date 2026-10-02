@@ -1,11 +1,13 @@
 "use client";
 
 import { formatDateTime, type Me } from "@gc/types";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { Alert, Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session, useAuth } from "@/lib/session";
+import type { NotificationPrefs } from "@/lib/types";
 
 type DeviceSession = { id: string; ip: string | null; created_at: string; device_info: { platform?: string; user_agent?: string } | null };
 
@@ -109,6 +111,11 @@ function ProfileForm({ me }: { me: Me }) {
           </div>
         </form>
       </Card>
+      <PrefsCard />
+      <Link href="/reviews" className="flex items-center justify-between rounded-2xl border border-line bg-surface p-5 font-semibold hover:border-muted/60">
+        <span>{t("reviews.mine.title")}</span>
+        <span className="text-muted">→</span>
+      </Link>
       <Card>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-display text-lg font-bold">{t("profile.sessions")}</h2>
@@ -151,6 +158,67 @@ function ProfileForm({ me }: { me: Me }) {
         )}
       </Card>
     </main>
+  );
+}
+
+const PREF_KEYS = ["reminders", "announcements", "telegram"] as const;
+
+function PrefsCard() {
+  const { t } = useI18n();
+  const errorText = useErrorText();
+  const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    session.get<NotificationPrefs>("/users/me/notification-preferences").then(
+      (r) => setPrefs(r.data),
+      (e) => setError(errorText(e)),
+    );
+  }, [errorText]);
+
+  async function toggle(key: (typeof PREF_KEYS)[number]) {
+    if (!prefs) return;
+    const prev = prefs;
+    setPrefs({ ...prefs, [key]: !prefs[key] });
+    try {
+      const r = await session.patch<NotificationPrefs>("/users/me/notification-preferences", { [key]: !prev[key] });
+      setPrefs(r.data);
+    } catch (e) {
+      setPrefs(prev);
+      setError(errorText(e));
+    }
+  }
+
+  return (
+    <Card>
+      <h2 className="mb-3 font-display text-lg font-bold">{t("notifications.prefs")}</h2>
+      {error && <Alert>{error}</Alert>}
+      {!prefs && !error && <Spinner />}
+      {prefs && (
+        <ul className="divide-y divide-line-soft">
+          {PREF_KEYS.map((k) => (
+            <li key={k} className="flex items-center justify-between gap-4 py-3">
+              <div>
+                <div className="text-sm font-bold">{t(`notifications.pref.${k}` as never)}</div>
+                <div className="text-xs text-muted">
+                  {k === "telegram" && !prefs.telegram_linked ? t("notifications.telegramNotLinked") : t(`notifications.pref.${k}Hint` as never)}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={prefs[k]}
+                aria-label={t(`notifications.pref.${k}` as never)}
+                onClick={() => toggle(k)}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition ${prefs[k] ? "bg-accent" : "bg-surface-2"}`}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${prefs[k] ? "left-[22px]" : "left-0.5"}`} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 

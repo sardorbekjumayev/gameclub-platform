@@ -13,6 +13,19 @@ import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { UsersModule } from './modules/users/users.module';
+import { ClubsModule } from './modules/clubs/clubs.module';
+import { BookingsModule } from './modules/bookings/bookings.module';
+import { DevicesModule } from './modules/devices/devices.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { SessionsModule } from './modules/sessions/sessions.module';
+import { DiscoveryModule } from './modules/discovery/discovery.module';
+import { EngagementModule } from './modules/engagement/engagement.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
+import { PlansModule } from './modules/plans/plans.module';
+import { PayoutsModule } from './modules/payouts/payouts.module';
+import { TelegramModule } from './modules/telegram/telegram.module';
+import { CoreServicesModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -39,9 +52,23 @@ import { UsersModule } from './modules/users/users.module';
     DatabaseModule,
     RedisModule,
     AuditModule,
+    TelegramModule,
     RbacModule,
     AuthModule,
     UsersModule,
+    RealtimeModule,
+    CoreServicesModule,
+    PlansModule,
+    PayoutsModule,
+    // DiscoveryModule ClubsModule'dan oldin: statik `/branches/map` dinamik `/branches/:idOrSlug` ga tushib qolmasin.
+    DiscoveryModule,
+    ClubsModule,
+    PaymentsModule,
+    BookingsModule,
+    DevicesModule,
+    SessionsModule,
+    EngagementModule,
+    AnalyticsModule,
     HealthModule,
   ],
   providers: [

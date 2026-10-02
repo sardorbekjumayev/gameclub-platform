@@ -61,7 +61,10 @@ export class RbacService {
       if (g.scope_type === 'PLATFORM') return true;
       if (!scope || (!scope.club_id && !scope.branch_id)) return true;
       if (g.scope_type === 'CLUB') return !!scope.club_id && scope.club_id === g.club_id;
-      return !!scope.branch_id && scope.branch_id === g.branch_id;
+      if (scope.branch_id) return scope.branch_id === g.branch_id;
+      // Klub darajasidagi marshrut (/clubs/:clubId/...): filial roli o'z klubiga kiradi,
+      // natijalar service ichida o'z filiallari bilan cheklanadi.
+      return !!scope.club_id && scope.club_id === g.club_id;
     });
   }
 }

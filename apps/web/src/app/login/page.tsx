@@ -1,6 +1,6 @@
 "use client";
 
-import type { LoginResult } from "@gc/types";
+import type { LoginResult, SendOtpResult } from "@gc/types";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Field, Input } from "@/components/ui";
@@ -22,12 +22,14 @@ export default function LoginPage() {
   const [phone, setPhone] = useState("+998 ");
   const [code, setCode] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  const [sent, setSent] = useState<SendOtpResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (me) router.replace("/profile");
-  }, [me, router]);
+    // Kirgan foydalanuvchi — faqat ochilganda (verify'dan keyingi yo'naltirishni buzmaslik uchun)
+    if (me && !busy) router.replace("/profile");
+  }, [me, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -39,7 +41,10 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await session.post<{ resend_in: number }>("/auth/send-otp", { phone: normalizePhone(phone), purpose: "LOGIN" });
+      const res = await session.post<SendOtpResult>("/auth/send-otp", { phone: normalizePhone(phone), purpose: "LOGIN" });
+      setSent(res.data);
+      // Raqam botga hali bog'lanmagan — botni yangi oynada ochamiz (kontakt ulashilgach kod botga keladi)
+      if (!res.data.delivered) window.open(res.data.bot_url, "_blank", "noopener");
       setStep("code");
       setCode("");
       setCooldown(res.data.resend_in);
@@ -62,7 +67,10 @@ export default function LoginPage() {
     try {
       const res = await session.post<LoginResult>("/auth/verify-otp", { phone: normalizePhone(phone), code, device: { platform: "web" } });
       signIn(res.data);
-      router.replace(res.data.is_new ? "/profile?welcome=1" : "/");
+      // Faqat ichki yo'l (open redirect oldi)
+      const next = new URLSearchParams(window.location.search).get("next");
+      const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+      router.replace(safeNext ?? (res.data.is_new ? "/profile?welcome=1" : "/"));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -96,8 +104,27 @@ export default function LoginPage() {
           </form>
         ) : (
           <form className="space-y-4" onSubmit={verify}>
-            <p className="text-sm text-muted">{t("auth.codeSent", { phone: normalizePhone(phone) })}</p>
-            <Field label={t("auth.code")} hint={process.env.NODE_ENV !== "production" ? t("auth.devHint") : undefined}>
+            {sent && !sent.delivered ? (
+              <div className="space-y-3 rounded-xl border border-line bg-surface-2 p-4 text-sm">
+                <p>{t("auth.tgLinkHint")}</p>
+                <a
+                  href={sent.bot_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#229ED9] font-bold text-white transition hover:brightness-110"
+                >
+                  {t("auth.openBot")}
+                </a>
+                <ol className="list-decimal space-y-1 pl-5 text-muted">
+                  <li>{t("auth.tgStep1")}</li>
+                  <li>{t("auth.tgStep2")}</li>
+                  <li>{t("auth.tgStep3")}</li>
+                </ol>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">{sent?.channel === "DEV" ? t("auth.codeSentDev") : t("auth.codeSent", { phone: normalizePhone(phone) })}</p>
+            )}
+            <Field label={t("auth.code")} hint={sent?.channel === "DEV" ? t("auth.devHint") : undefined}>
               <Input
                 inputMode="numeric"
                 autoComplete="one-time-code"

@@ -30,14 +30,14 @@ Migratsiya bor · DTO validatsiya bor · permission/scope bor · Swagger bor · 
 ```text
 docker compose up -d            # postgres(postgis) :55432, redis :56379
 pnpm install
-pnpm dev:api | pnpm dev:web | pnpm dev:admin
+pnpm dev:api | pnpm dev:web | pnpm dev:platform | pnpm dev:club | pnpm dev:desk
 pnpm test | pnpm test:e2e | pnpm lint
 pnpm db:migrate | pnpm db:seed
 pnpm gen:types   # OpenAPI -> packages/types
 cd mobile && flutter run --dart-define=API_URL=http://<host>:4700/api/v1 --dart-define=YANDEX_MAPS_KEY=<kalit>
 ```
-Dev kirish: super admin `admin@gameclub.local` / `ChangeMe123!` (`apps/api/.env`), customer OTP kodi dev'da `000000`.
+Dev kirish: super admin `admin@gameclub.local` / `ChangeMe123!` (`apps/api/.env`), customer login kodi Telegram bot orqali keladi (`TELEGRAM_BOT_TOKEN`); token bo'lmasa dev'da `000000`.
 Web/admin API'ni o'z domeni orqali `/api/v1` (Next rewrite → `API_ORIGIN`) chaqiradi — CORS kerak emas.
-Portlar (serverdagi boshqa servislar bilan to'qnashmaslik uchun): API `4700` (Swagger `/api/docs`), web `4710`, admin `4720`.
+Portlar: API `4700` (Swagger `/api/docs`), web `4710`. Admin bitta kod bazasidan 3 panel (`NEXT_PUBLIC_PANEL`, `apps/admin/src/lib/panel.ts`): platforma `4720` (SUPER_ADMIN/SUPPORT), klub egasi `4730` (CLUB_OWNER/CLUB_ADMIN), operator pulti `4740` (BRANCH_ADMIN/OPERATOR).
 Object storage (S3/MinIO) hali docker-compose'da yo'q — `minio/minio` image reestrdan olib bo'lmadi; Phase 2 (files) da qo'shiladi.
 Xarita: Yandex Maps JS API 2.1 + HTTP Geocoder (`MapProvider` abstraksiyasi: web/admin `src/components/map/`, mobile `lib/features/map/` — WebView). Kalit `apps/{web,admin}/.env.local` → `NEXT_PUBLIC_YANDEX_MAPS_KEY` (git'ga tushmaydi), mobile'da `--dart-define`. Xarita markerlari `GET /branches/map?bbox=` dan (Phase 2); endpoint yo'q bo'lsa UI "tez orada" holatini ko'rsatadi.

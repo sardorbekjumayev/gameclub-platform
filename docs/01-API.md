@@ -66,7 +66,11 @@ Xato:
 ## 4. Autentifikatsiya
 
 ### 4.1 Customer (telefon + OTP)
-1. `POST /auth/send-otp {phone, purpose: LOGIN|REGISTER|RESET}` → 6 xonali kod, TTL 120 s, Redis'da hash, resend cooldown 60 s, kuniga max 10/telefon. SMS provayder `SmsProvider` interfeysi orqali (local gateway). Dev/test rejimida qat'iy kod (`000000`) faqat `NODE_ENV != production`.
+1. `POST /auth/send-otp {phone, purpose: LOGIN|REGISTER|RESET}` → 6 xonali kod **Telegram bot orqali** (SMS ishlatilmaydi), TTL 120 s, Redis'da hash, resend cooldown 60 s, kuniga max 10/telefon.
+   - Telefon botga bog'langan (`telegram_links`) → kod darhol botga yuboriladi: `{channel: TELEGRAM, delivered: true, expires_in, resend_in}`.
+   - Bog'lanmagan → `{channel: TELEGRAM, delivered: false, bot_url: "https://t.me/<bot>?start=<nonce>", link_expires_in: 600}`. Klient botni ochadi; botda `/start` → «📱 Raqamni ulashish» (Telegram `request_contact`, faqat o'z kontakti: `contact.user_id == from.id`) → raqam `telegram_links` ga yoziladi va kod botga yuboriladi. Nonce'dagi raqam kontakt raqamiga mos kelmasa kod yuborilmaydi.
+   - Bot yangilanishlari: dev — long polling (Redis lock, bitta instans), prod — `POST /telegram/webhook` (`X-Telegram-Bot-Api-Secret-Token`). Env: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME?`, `TELEGRAM_MODE=polling|webhook`, `TELEGRAM_WEBHOOK_URL`, `TELEGRAM_WEBHOOK_SECRET`.
+   - Bot token berilmagan va `NODE_ENV != production` → `{channel: DEV}`, qat'iy kod `000000`.
 2. `POST /auth/verify-otp {phone, code, device}` → foydalanuvchi mavjud bo'lsa login, bo'lmasa yaratiladi (`REGISTER`) → `{access_token, refresh_token, user, is_new}`.
 3. Ixtiyoriy parol: `POST /auth/password` (o'rnatish), `POST /auth/login {phone,password}`.
 4. Anti-fraud 🆕: SMS-pumping himoyasi (mamlakat prefiksi allowlist, IP/qurilma limiti, CAPTCHA/attestation ixtiyoriy), bloklangan telefon ro'yxati.
@@ -157,6 +161,7 @@ GET    /clubs/:id/documents       [clubs.documents.manage]
 GET    /clubs/:id/settings        [settings.view]      PATCH [settings.update]  (booking qoidalari, cancellation_policy)
 ```
 Super admin: `POST /admin/clubs/:id/approve|reject|suspend|reactivate` (sabab majburiy), `GET /admin/clubs?status=PENDING_APPROVAL`. Status o'tishlari faqat ruxsat etilgan grafda: `DRAFT→PENDING_APPROVAL→ACTIVE|REJECTED`, `ACTIVE↔SUSPENDED`, `*→CLOSED`. Har o'tish `audit_logs` + notification (owner'ga).
+Platforma xodimlari (SUPER_ADMIN/SUPPORT) klub egasi bo'lolmaydi: `POST /clubs` ular uchun `403 FORBIDDEN` (`reason: PLATFORM_STAFF_CANNOT_OWN_CLUB`); `POST /admin/clubs` da `owner_phone` platforma xodimiga tegishli bo'lsa ham rad etiladi. Super admin klubni faqat boshqa egasi nomidan ochib, boshqaradi.
 Qoida: faqat `ACTIVE` klub va `ACTIVE` filial ommaviy qidiruvda ko'rinadi va bron qabul qiladi.
 
 ### 6.3 branches
@@ -502,43 +507,59 @@ Har bir phase'da: **API / Web / Mobile** vazifalari va Acceptance. (`[ ]` — ba
 - Acceptance: hamma ilova lokal ishga tushadi, DB ulanadi, CI yashil.
 
 **PHASE 1 — Auth & RBAC**
-- [x] users, OTP (mock SMS), staff login, JWT+refresh rotation, roles/permissions seed, guards, `/auth/me`
-- [ ] 2FA (staff), invitations — Phase 2 (xodimlar bilan birga)
+- [x] users, OTP (Telegram bot; dev'da 000000), staff login, JWT+refresh rotation, roles/permissions seed, guards, `/auth/me`
+- [x] invitations (Phase 2 bilan birga)
+- [ ] 2FA (staff) — keyinga qoldirildi
 - [x] Web: customer login/register; admin login. Mobile: login/OTP/profil
 - Acceptance: customer, staff, super admin login qila oladi; ruxsatsiz resurs 401/403; refresh reuse bloklanadi.
 
 **PHASE 2 — Club & Branch**
-- [ ] clubs (+ariza/hujjat/approval), branches, rooms, staff/invitations, files (presign)
-- [ ] Admin: klub onboarding wizard; super admin: approval navbati
+- [x] clubs (+ariza/hujjat/approval), branches, rooms, staff/invitations
+- [ ] files (presign) — MinIO docker-compose'ga qo'shilgach; hozircha hujjat/rasm URL orqali
+- [x] Admin: klub onboarding wizard (OTP login → klub → filial → moderatsiya); super admin: approval navbati
+- [x] e2e: `apps/api/test/clubs.e2e-spec.ts` (scope, taklif, approval)
 - Acceptance: owner klub ochadi, bir nechta filial, admin/operator biriktiradi; boshqa klub ma'lumotini ko'ra olmaydi.
 
 **PHASE 3 — Devices & Tariffs**
-- [ ] devices, categories, layout, maintenance, tariffs, PriceEngine + price-quote
+- [x] devices, categories, maintenance, tariffs, PriceEngine + price-quote (API + admin: Qurilmalar, Tariflar, narx kalkulyatori)
+- [x] layout: admin `/clubs/[id]/layout` (drag & drop, grid) + `/live` da "Xarita" ko'rinishi
 - Acceptance: operator barcha PC'larni ko'radi; statuslar ishlaydi; tarif oynalari to'g'ri narx beradi (unit testlar).
 
 **PHASE 4 — Customer Discovery**
-- [ ] nearby (PostGIS), search, filters, map bbox, club/branch details, summary
-- [ ] Mobile: Home/Map/List/Details; Web: /clubs, /map, /clubs/[slug]
+- [x] nearby (PostGIS), search, filters, map bbox, club/branch details, summary
+- [x] Mobile: Home/Map/List/Details; Web: /clubs, /map, /clubs/[id] (filial id — slug klublararo takrorlanishi mumkin)
 - Acceptance: yaqin filiallar to'g'ri masofa bilan; markerlar filial bo'yicha.
 
 **PHASE 5 — Booking Engine**
-- [ ] availability, hold, create, cancel, reschedule, expiry jobs, exclusion constraint, concurrency testlar, promo (asosiy)
+- [x] availability, hold, create, cancel, reschedule, expiry jobs, exclusion constraint, promo (asosiy) — API
+- [x] Web/Mobile: bron vidjeti (sana → davomiylik → vaqt → qurilma), bronlarim, bron tafsiloti (QR/kod), DEMO to'lov, bekor qilish
+- [x] UI: vaqtni ko'chirish (`can_reschedule`, slots `exclude_booking_id`), promokod maydoni (web + mobile)
 - Acceptance: bir qurilma/vaqt ikki marta bron qilinmaydi; muddati o'tgan hold bo'shaydi; lifecycle ishlaydi.
 
 **PHASE 6 — Payment**
-- [ ] PaymentProvider abstraksiyasi, 1 provayder, webhook (idempotent), refund arxitekturasi, ledger, payment-after-expiry
+- [x] PaymentProvider abstraksiyasi (`payments/providers/`): DEMO, **Payme** (merchant JSON-RPC `POST /webhooks/payments/payme`), **Click** (`/webhooks/payments/click/prepare|complete` + reversal API); `GET /payments/providers`; webhook idempotent (`payment_events`); refund provayder orqali (Payme — kabinetdan, CancelTransaction bilan yopiladi); ledger; payment-after-expiry; reconciliation job (10 daq)
+- [x] Web/Mobile: provayder tanlash, tashqi checkout, qaytgandan keyin holatni tekshirish
+- [ ] Haqiqiy merchant kalitlari bilan sandbox sinovi (Payme test kabineti, Click test servisi) — kalitlar `.env` ga berilgach
 - Acceptance: muvaffaqiyatli to'lov bronni tasdiqlaydi; xato tasdiqlamaydi; webhook takror ta'sir qilmaydi.
 
 **PHASE 7 — Sessions & Live**
-- [ ] session engine, check-in/QR, walk-in, extend, pause, move, overtime, WebSocket live board, kassa smenasi
+- [x] session engine, check-in (kod/QR matni), walk-in, extend, pause, move, overtime, WebSocket live board (Socket.IO `/api/v1/ws`), kassa smenasi
+- [x] Admin: `/live` operator paneli; Web: bosh sahifada mijozning faol sessiyasi
+- [x] Kamera orqali QR skanerlash (admin `/live`, BarcodeDetector/jsQR); mobile faol sessiya ekrani (`/session`)
 - Acceptance: operator start/stop qiladi; customer active session ko'radi; PC status real-time yangilanadi.
 
 **PHASE 8 — Notifications**
-- [ ] outbox, push (FCM), in-app, eslatmalar, preferences, Telegram/email (ixtiyoriy)
+- [x] in-app, Telegram kanali (bot orqali bog'langan telefonlar), eslatmalar (bron −60/−15, sessiya −10, sharh so'rovi), preferences (`GET/PATCH /users/me/notification-preferences`), dedupe (`notifications.dedupe_key`)
+- [x] Web: qo'ng'iroqcha + `/notifications` + profilda sozlamalar; Mobile: bildirishnomalar ekrani + sozlamalar
+- [x] push (FCM HTTP v1 adapteri, `FCM_SERVICE_ACCOUNT` berilganda yoqiladi; yaroqsiz token'lar o'chiriladi)
+- [ ] mobile'da `firebase_messaging` + token ro'yxatdan o'tkazish (Firebase loyihasi/`google-services.json` kerak); outbox; email
 - Acceptance: tasdiq, bekor, start-soon, session-ending xabarlari yuboriladi.
 
 **PHASE 9 — Reviews & Analytics**
-- [ ] reviews (+moderatsiya, reply), favorites, analytics endpointlari, reports/export, subscriptions, commissions/payouts
+- [x] API: reviews (+moderatsiya, reply, shikoyat dedupe), favorites, analytics, reports CSV, subscriptions/plan limitlari, payouts (`/admin/payouts`, `/clubs/:clubId/payouts`)
+- [x] Admin: klub analitikasi (KPI, daromad, peak-hours, qurilmalar, filiallar, CSV) + payouts, klub sharhlari/javob; platforma analitikasi, sharh moderatsiyasi, payouts
+- [x] Web/Mobile: bronga sharh (24 soat tahrirlash), filial sharhlari (javob, shikoyat), sevimlilar
+- [x] xlsx eksport (`/reports/:kind?format=xlsx`), `daily_branch_stats` (soatlik job, 90 kun backfill, `GET /analytics/club/daily`), "mening sharhlarim", filialda `is_favorite`
 - Acceptance: KPI qiymatlari ledger bilan mos; eksport ishlaydi; plan limitlari majburlanadi.
 
 **PHASE 10 — Production**

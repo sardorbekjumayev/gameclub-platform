@@ -3,6 +3,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AuthUser, CurrentUser, Public } from '../../common/decorators/auth.decorators';
 import { clientIp, userAgent } from '../../common/utils/request';
+import { AcceptInvitationDto, InvitationTokenDto } from '../clubs/dto/clubs.dto';
+import { StaffService } from '../clubs/staff.service';
 import { AuthService } from './auth.service';
 import { LoginDto, RefreshDto, SendOtpDto, SetPasswordDto, VerifyOtpDto } from './dto/auth.dto';
 import { OtpService } from './otp.service';
@@ -22,12 +24,30 @@ export class AuthController {
     private readonly otp: OtpService,
     private readonly auth: AuthService,
     private readonly tokens: TokenService,
+    private readonly staff: StaffService,
   ) {}
+
+  @Public()
+  @Post('invitations/preview')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Xodim taklifi ma\'lumoti (qabul sahifasi)' })
+  invitation(@Body() dto: InvitationTokenDto) {
+    return this.staff.previewInvitation(dto.token);
+  }
+
+  @Public()
+  @Post('invitations/accept')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Taklifni qabul qilish → login (yangi xodim parol o\'rnatadi; mavjud akkaunt o\'z parolini kiritadi)' })
+  async acceptInvitation(@Body() dto: AcceptInvitationDto, @Req() req: Request) {
+    const userId = await this.staff.acceptInvitation(dto);
+    return this.auth.loginById(userId, meta(req));
+  }
 
   @Public()
   @Post('send-otp')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Telefonga OTP yuborish (dev: kod 000000)' })
+  @ApiOperation({ summary: 'Login kodi Telegram bot orqali: bog\'langan bo\'lsa kod botga keladi, aks holda bot_url qaytadi (dev, token yo\'q: 000000)' })
   sendOtp(@Body() dto: SendOtpDto, @Req() req: Request) {
     return this.otp.send(dto.phone, dto.purpose, clientIp(req));
   }

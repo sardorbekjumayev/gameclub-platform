@@ -84,6 +84,11 @@ export const yandexMaps: MapProvider = {
         pin = position ? new ymaps.Placemark(toLL(position), {}, { preset: "islands#circleDotIcon", iconColor: "#C6FF3D" }) : null;
         if (pin) map.geoObjects.add(pin);
       },
+      fitTo(points) {
+        if (points.length === 0) return;
+        if (points.length === 1) return map.setCenter(toLL(points[0]), 14, { duration: 300 });
+        map.setBounds(ymaps.util.bounds.fromPoints(points.map(toLL)), { checkZoomRange: true, zoomMargin: 48, duration: 300 });
+      },
       getBBox(): BBox {
         const [[s, w], [n, e]] = map.getBounds();
         return [w, s, e, n];

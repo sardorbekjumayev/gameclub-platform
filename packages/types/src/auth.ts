@@ -127,6 +127,10 @@ export function createSessionClient(opts: {
     put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
     delete: <T>(path: string) => request<T>('DELETE', path),
     isAuthenticated: () => !!opts.store.get(),
+    /** WebSocket handshake uchun joriy access token. */
+    accessToken: () => opts.store.get()?.access_token ?? null,
+    /** Token muddati tugaganda (masalan WebSocket rad etsa) yangilash. */
+    refresh: async () => (await refresh())?.access_token ?? null,
     setTokens: (t: AuthTokens | null) => opts.store.set(t),
     async logout() {
       const current = opts.store.get();
@@ -139,3 +143,8 @@ export function createSessionClient(opts: {
 export type SessionClient = ReturnType<typeof createSessionClient>;
 
 export const hasPermission = (me: Me | null | undefined, permission: string) => !!me?.permissions.includes(permission);
+
+/** `POST /auth/send-otp` javobi: kod Telegram bot orqali keladi (bog'lanmagan bo'lsa — `bot_url`). */
+export type SendOtpResult =
+  | { channel: 'TELEGRAM' | 'DEV'; delivered: true; expires_in: number; resend_in: number }
+  | { channel: 'TELEGRAM'; delivered: false; bot_url: string; link_expires_in: number; resend_in: number };

@@ -3,16 +3,27 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 4720",
-    "build": "next build",
-    "start": "next start -p 4720",
+    "dev": "NEXT_PUBLIC_PANEL=club next dev -p 4730",
+    "dev:platform": "NEXT_PUBLIC_PANEL=platform NEXT_DIST_DIR=.next-platform next dev -p 4720",
+    "dev:club": "NEXT_PUBLIC_PANEL=club NEXT_DIST_DIR=.next-club next dev -p 4730",
+    "dev:desk": "NEXT_PUBLIC_PANEL=desk NEXT_DIST_DIR=.next-desk next dev -p 4740",
+    "build": "pnpm build:platform && pnpm build:club && pnpm build:desk",
+    "build:platform": "NEXT_PUBLIC_PANEL=platform NEXT_DIST_DIR=.next-platform next build",
+    "build:club": "NEXT_PUBLIC_PANEL=club NEXT_DIST_DIR=.next-club next build",
+    "build:desk": "NEXT_PUBLIC_PANEL=desk NEXT_DIST_DIR=.next-desk next build",
+    "start:platform": "NEXT_DIST_DIR=.next-platform next start -p 4720",
+    "start:club": "NEXT_DIST_DIR=.next-club next start -p 4730",
+    "start:desk": "NEXT_DIST_DIR=.next-desk next start -p 4740",
     "lint": "eslint"
   },
   "dependencies": {
+    "@gc/types": "workspace:*",
+    "jsqr": "^1.4.0",
+    "lucide-react": "^1.48.0",
     "next": "16.3.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "@gc/types": "workspace:*"
+    "socket.io-client": "^4.8.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
