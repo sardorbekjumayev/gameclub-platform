@@ -6,3 +6,6 @@ dist
 coverage
 *.log
 .turbo
+
+# gameclub-mobile repo shu papkaga alohida clone qilinadi
+mobile/
