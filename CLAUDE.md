@@ -28,6 +28,7 @@ Migratsiya bor · DTO validatsiya bor · permission/scope bor · Swagger bor · 
 
 ## Komandalar
 ```text
+pnpm run setup                  # yangi clone: env + Yandex kalit so'raydi + install + docker + migrate + seed
 docker compose up -d            # postgres(postgis) :55432, redis :56379
 pnpm install
 pnpm dev:api | pnpm dev:web | pnpm dev:platform | pnpm dev:club | pnpm dev:desk
