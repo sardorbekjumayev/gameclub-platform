@@ -104,7 +104,7 @@ export async function seedDemo(prisma: PrismaClient) {
   let firstBranch: string | null = null;
   let firstClub: string | null = null;
 
-  for (const c of CLUBS) {
+  for (const [ci, c] of CLUBS.entries()) {
     let club = await prisma.clubs.findUnique({ where: { slug: c.slug } });
     if (club) {
       if (c.owner === 'owner') {
@@ -117,6 +117,8 @@ export async function seedDemo(prisma: PrismaClient) {
       data: {
         id: uuidv7(), owner_id: users.get(c.owner)!, name: c.name, slug: c.slug, description: c.description, phone: USERS[c.owner].phone,
         amenities: ['wifi', 'parking', 'snacks'], status: 'ACTIVE', approved_at: new Date(), approved_by: admin?.id,
+        // Demo o'tkazma kartasi (haqiqiy emas) — mijoz kartaga o'tkazma oqimini sinashi uchun
+        transfer_card_number: `8600${String(ci + 1).padStart(4, '0')}12345678`, transfer_card_holder: `${USERS[c.owner].first_name} ${USERS[c.owner].last_name}`.toUpperCase(),
       },
     });
     await grant(c.owner, 'CLUB_OWNER', club.id);

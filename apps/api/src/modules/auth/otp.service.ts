@@ -104,14 +104,14 @@ export class OtpService implements OnModuleInit {
     return { channel: 'TELEGRAM', delivered: false, bot_url: await this.telegram.deepLink(nonce), link_expires_in: LINK_TTL_S, resend_in: 10 };
   }
 
-  /** Kod yaratish, saqlash (hash) va yuborish. chatId null — dev (yuborilmaydi). */
-  private async issue(phone: string, purpose: OtpPurpose, ip: string | null, chatId: bigint | number | null) {
+  /** Kod yaratish, saqlash (hash) va yuborish. chatId null — dev (yuborilmaydi). fromContact — "Raqamni ulashish" klaviaturasini yopish. */
+  private async issue(phone: string, purpose: OtpPurpose, ip: string | null, chatId: bigint | number | null, fromContact = false) {
     const code = chatId !== null || this.isProd ? randomDigits(6) : DEV_CODE;
     if (chatId !== null) {
       await this.telegram.sendMessage(
         chatId,
         `🎮 <b>Game Club</b>\n\nKirish kodi: <code>${code}</code>\n\nKod 2 daqiqa amal qiladi. Uni hech kimga bermang — Game Club xodimlari kodni hech qachon so'ramaydi.`,
-        { reply_markup: { remove_keyboard: true } },
+        fromContact ? { reply_markup: { remove_keyboard: true } } : {},
       );
     }
     await this.redis
@@ -155,12 +155,9 @@ export class OtpService implements OnModuleInit {
     if (m.contact) return this.onContact(m);
     const text = m.text?.trim() ?? '';
     if (text.startsWith('/start')) return this.onStart(m, text.slice(6).trim());
+    // Bog'langan chatdagi boshqa xabarlar — TelegramBotService (menyu, chiptalar)
     const linked = await this.prisma.telegram_links.findUnique({ where: { chat_id: BigInt(m.chat.id) } });
-    await this.telegram.sendMessage(
-      m.chat.id,
-      linked ? `Raqamingiz bog'langan: ${mask(linked.phone)}. Saytda yoki ilovada kirishda kod shu yerga keladi.` : "Kirish kodini olish uchun raqamingizni ulashing 👇",
-      linked ? {} : { reply_markup: this.contactKeyboard() },
-    );
+    if (!linked) await this.telegram.sendMessage(m.chat.id, "Kirish kodini olish uchun raqamingizni ulashing 👇", { reply_markup: this.contactKeyboard() });
   }
 
   private async onStart(m: TgMessage, nonce: string) {
@@ -176,6 +173,7 @@ export class OtpService implements OnModuleInit {
         return;
       }
     }
+    if (linked && !nonce) return this.telegram.linked(m.chat.id); // bot menyusi
     await this.telegram.sendMessage(
       m.chat.id,
       "🎮 <b>Game Club</b>\n\nKirish kodini olish uchun telefon raqamingizni tasdiqlang: pastdagi <b>«📱 Raqamni ulashish»</b> tugmasini bosing.",
@@ -216,9 +214,10 @@ export class OtpService implements OnModuleInit {
     }
     if (req) {
       await this.redis.del(`tg:nonce:${nonce}`, `tg:chat:${m.chat.id}`);
-      await this.issue(phone, req.purpose, req.ip, chatId);
-      return;
+      await this.issue(phone, req.purpose, req.ip, chatId, true);
+    } else {
+      await this.telegram.sendMessage(m.chat.id, `✅ Raqamingiz bog'landi: ${mask(phone)}.\nEndi saytda yoki ilovada kirishda kod shu yerga keladi.`, { reply_markup: { remove_keyboard: true } });
     }
-    await this.telegram.sendMessage(m.chat.id, `✅ Raqamingiz bog'landi: ${mask(phone)}.\nEndi saytda yoki ilovada kirishda kod shu yerga keladi.`, { reply_markup: { remove_keyboard: true } });
+    await this.telegram.linked(m.chat.id); // akkaunt bo'lsa — bot menyusi
   }
 }

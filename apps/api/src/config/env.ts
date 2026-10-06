@@ -17,6 +17,8 @@ export const envSchema = z.object({
     .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
   APP_TIMEZONE_DEFAULT: z.string().default('Asia/Tashkent'),
   ADMIN_APP_URL: z.string().url().default('http://localhost:4720'),
+  // Mijoz sayti (Telegram botdagi "Saytda ochish" tugmasi; faqat https bo'lsa ko'rsatiladi)
+  PUBLIC_WEB_URL: optional(z.string().url()),
   // Telegram bot — login kodi (OTP) shu bot orqali yuboriladi. Token bo'lmasa dev'da qat'iy kod 000000.
   TELEGRAM_BOT_TOKEN: optional(z.string()),
   TELEGRAM_BOT_USERNAME: optional(z.string()),

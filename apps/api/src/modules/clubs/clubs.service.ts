@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { Prisma } from '@prisma/client';
 import { PageQuery, pageArgs } from '../../common/dto/pagination.dto';
-import { DEFAULT_CANCELLATION_POLICY } from '../../common/domain/price-engine';
+import { DEFAULT_CANCELLATION_POLICY, maskCard, policyFrom } from '../../common/domain/price-engine';
 import { AppException } from '../../common/errors';
 import { Paginated } from '../../common/interceptors/response.interceptor';
 import { slugify } from '../../common/utils/codes';
@@ -121,7 +121,10 @@ export class ClubsService {
       devices: await this.prisma.devices.count({ where: { club_id: clubId, deleted_at: null } }),
       staff: await this.prisma.user_roles.count({ where: { club_id: clubId } }),
     };
-    return { ...club, subscription: sub, counts, cancellation_policy: club.cancellation_policy ?? DEFAULT_CANCELLATION_POLICY };
+    // Karta faqat settings.view orqali (GET /clubs/:id/settings)
+    const { transfer_card_number, transfer_card_holder, ...rest } = club;
+    void transfer_card_holder;
+    return { ...rest, has_transfer_card: !!transfer_card_number, subscription: sub, counts, cancellation_policy: policyFrom(club.cancellation_policy) };
   }
 
   private async createClubRecord(tx: Prisma.TransactionClient, ownerId: string, dto: CreateClubDto, status: string, actorId: string) {
@@ -227,21 +230,36 @@ export class ClubsService {
 
   async settings(clubId: string, grants: Grant[]) {
     assertCan(grants, 'settings.view', { club_id: clubId });
-    const c = await this.prisma.clubs.findFirstOrThrow({ where: { id: clubId }, select: { cancellation_policy: true, settings: true } });
-    return { cancellation_policy: c.cancellation_policy ?? DEFAULT_CANCELLATION_POLICY, settings: c.settings ?? {} };
+    const c = await this.prisma.clubs.findFirstOrThrow({ where: { id: clubId }, select: { cancellation_policy: true, settings: true, transfer_card_number: true, transfer_card_holder: true } });
+    return {
+      cancellation_policy: policyFrom(c.cancellation_policy),
+      settings: c.settings ?? {},
+      transfer_card: c.transfer_card_number ? { number: c.transfer_card_number, holder: c.transfer_card_holder } : null,
+    };
   }
 
   async updateSettings(clubId: string, dto: ClubSettingsDto, grants: Grant[], actor: Actor) {
     assertCan(grants, 'settings.update', { club_id: clubId });
+    if (dto.cancellation_policy) {
+      const mins = dto.cancellation_policy.rules.map((r) => r.min_minutes_before_start);
+      if (!mins.length || mins.length > 8 || new Set(mins).size !== mins.length) {
+        throw new AppException('VALIDATION_ERROR', 'Rules must be 1..8 items with distinct min_minutes_before_start', { field: 'cancellation_policy.rules' });
+      }
+    }
     const old = await this.settings(clubId, grants.length ? grants : []);
+    const card = dto.transfer_card;
     await this.prisma.clubs.update({
       where: { id: clubId },
       data: {
         ...(dto.cancellation_policy ? { cancellation_policy: dto.cancellation_policy as unknown as Prisma.InputJsonValue } : {}),
         ...(dto.settings ? { settings: dto.settings as Prisma.InputJsonValue } : {}),
+        ...(card === null ? { transfer_card_number: null, transfer_card_holder: null } : {}),
+        ...(card ? { transfer_card_number: card.number, transfer_card_holder: card.holder.trim().toUpperCase() } : {}),
       },
     });
-    await this.audit.log({ actor_id: actor.id, club_id: clubId, action: 'club.settings.update', target_type: 'club', target_id: clubId, old_value: old, new_value: dto, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
+    // Karta raqami audit log'ga faqat maskalangan holda tushadi
+    const masked = <T extends { transfer_card?: { number: string } | null }>(v: T) => (v.transfer_card ? { ...v, transfer_card: { ...v.transfer_card, number: maskCard(v.transfer_card.number) } } : v);
+    await this.audit.log({ actor_id: actor.id, club_id: clubId, action: 'club.settings.update', target_type: 'club', target_id: clubId, old_value: masked(old), new_value: masked(dto), ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
     return this.settings(clubId, grants);
   }
 

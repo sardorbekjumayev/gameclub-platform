@@ -45,6 +45,21 @@ export class FinanceService {
     return tx.bookings.update({ where: { id: bookingId }, data: { paid_amount: net < 0n ? 0n : net, payment_status, refund_amount: refunded > 0n ? refunded : null } });
   }
 
+  /** Arenda summalarini to'lovlar bo'yicha qayta hisoblash. */
+  async syncRentalPayment(tx: Tx, rentalId: string) {
+    const r = await tx.rentals.findUniqueOrThrow({ where: { id: rentalId } });
+    const pays = await tx.payments.findMany({ where: { rental_id: rentalId, status: { in: ['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED'] } } });
+    const paid = pays.reduce((s, p) => s + p.amount, 0n);
+    const refunded = pays.reduce((s, p) => s + p.refunded_amount, 0n);
+    const net = paid - refunded;
+    let payment_status = 'UNPAID';
+    if (refunded > 0n && net <= 0n) payment_status = 'REFUNDED';
+    else if (refunded > 0n) payment_status = 'PARTIALLY_REFUNDED';
+    else if (paid >= r.total_amount && paid > 0n) payment_status = 'PAID';
+    else if (paid > 0n) payment_status = 'PARTIAL';
+    return tx.rentals.update({ where: { id: rentalId }, data: { paid_amount: net < 0n ? 0n : net, payment_status } });
+  }
+
   /** To'lovni PAID qilish + komissiya + ledger. Online to'lovlarga komissiya; naqd/terminalga yo'q (klub kassasiga tushadi). */
   async markPaid(tx: Tx, paymentId: string, providerTxId?: string) {
     const p = await tx.payments.findUniqueOrThrow({ where: { id: paymentId } });
@@ -65,15 +80,16 @@ export class FinanceService {
       // platform_commissions — payout hisobi uchun
     }
     if (p.booking_id) await this.syncBookingPayment(tx, p.booking_id);
+    if (p.rental_id) await this.syncRentalPayment(tx, p.rental_id);
     return paid;
   }
 
   /** Naqd/terminal to'lov (operator). Ochiq smena talab qilinadi. */
-  async recordOffline(tx: Tx, input: { club_id: string; branch_id: string; booking_id?: string | null; session_id?: string | null; user_id?: string | null; amount: bigint; method: 'CASH' | 'TERMINAL'; operator_id: string; shift_id: string }) {
+  async recordOffline(tx: Tx, input: { club_id: string; branch_id: string; booking_id?: string | null; session_id?: string | null; rental_id?: string | null; user_id?: string | null; amount: bigint; method: 'CASH' | 'TERMINAL'; operator_id: string; shift_id: string }) {
     if (input.amount <= 0n) throw new AppException('VALIDATION_ERROR', 'Amount must be positive', { field: 'amount' });
     const p = await tx.payments.create({
       data: {
-        id: uuidv7(), club_id: input.club_id, branch_id: input.branch_id, booking_id: input.booking_id, session_id: input.session_id, user_id: input.user_id,
+        id: uuidv7(), club_id: input.club_id, branch_id: input.branch_id, booking_id: input.booking_id, session_id: input.session_id, rental_id: input.rental_id, user_id: input.user_id,
         amount: input.amount, method: input.method, provider: 'MANUAL', status: 'PENDING', received_by: input.operator_id, shift_id: input.shift_id,
       },
     });
@@ -82,7 +98,8 @@ export class FinanceService {
 
   /**
    * Bron bo'yicha refund: eng oxirgi PAID to'lovlardan boshlab taqsimlanadi.
-   * Online (demo) provayder refundi darhol COMPLETED; naqd refund operator kassasidan (smena hisobotiga tushadi).
+   * Online (demo) provayder refundi darhol COMPLETED; naqd refund operator kassasidan (smena hisobotiga tushadi);
+   * kartaga o'tkazma refundi PENDING — klub qaytargach `POST /refunds/:id/complete`.
    */
   async refundBooking(tx: Tx, bookingId: string, amount: bigint, reason: string, actorId: string | null, policySnapshot?: unknown) {
     if (amount <= 0n) return 0n;
@@ -111,7 +128,10 @@ export class FinanceService {
       throw new AppException('REFUND_NOT_ALLOWED', 'Refund amount exceeds refundable balance', { refundable: Number(available) });
     }
     const provider = p.provider === 'MANUAL' || providerDone ? null : this.providers.find(p.provider);
-    const pr = provider ? await provider.refund(p, amount) : { status: 'COMPLETED' as const, provider_refund_id: null };
+    // Kartaga o'tkazma: klub pulni mijozga o'zi qaytaradi va "qaytarildi" deb belgilaydi (PENDING → COMPLETED)
+    const pr = p.method === 'CARD_TRANSFER' && !providerDone
+      ? { status: 'PENDING' as const, provider_refund_id: null }
+      : provider ? await provider.refund(p, amount) : { status: 'COMPLETED' as const, provider_refund_id: null };
     const refund = await tx.refunds.create({
       data: {
         id: uuidv7(), payment_id: p.id, booking_id: p.booking_id, club_id: p.club_id, amount, reason, status: pr.status, initiated_by: actorId,
@@ -120,6 +140,7 @@ export class FinanceService {
     });
     const refunded = p.refunded_amount + amount;
     await tx.payments.update({ where: { id: p.id }, data: { refunded_amount: refunded, status: refunded >= p.amount ? 'REFUNDED' : 'PARTIALLY_REFUNDED' } });
+    if (p.rental_id) await this.syncRentalPayment(tx, p.rental_id);
     // Teskari ledger: komissiya ulushi proporsional qaytariladi
     const commission = p.commission_amount ?? 0n;
     const platformPart = p.amount > 0n ? (amount * commission) / p.amount : 0n;

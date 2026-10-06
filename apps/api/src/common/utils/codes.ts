@@ -38,3 +38,6 @@ export function slugify(s: string): string {
 
 /** Operator uchun telefon maskasi: +998 90 *** ** 12 */
 export const maskPhone = (p?: string | null) => (p && p.length >= 12 ? `${p.slice(0, 4)} ${p.slice(4, 6)} *** ** ${p.slice(-2)}` : p ?? null);
+
+/** Arenda kodi: RN- + 6 belgi Crockford base32. */
+export const rentalCode = () => 'RN-' + Array.from({ length: 6 }, () => CROCKFORD[randomInt(0, 32)]).join('');

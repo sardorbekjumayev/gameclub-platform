@@ -1,12 +1,32 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, IsUUID, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, IsUUID, Matches, MaxLength, Min, MinLength } from 'class-validator';
 import { PageQuery } from '../../../common/dto/pagination.dto';
 
 export class CreatePaymentDto {
   @ApiProperty() @IsUUID() booking_id!: string;
   @ApiProperty({ enum: ['DEMO', 'PAYME', 'CLICK'], description: 'Yoqilganlari: GET /payments/providers' }) @IsIn(['DEMO', 'PAYME', 'CLICK']) provider!: string;
   @ApiPropertyOptional() @IsOptional() @IsUrl({ require_tld: false, protocols: ['http', 'https', 'gameclub'], require_valid_protocol: true }) return_url?: string;
+}
+
+export class TransferPaymentDto {
+  @ApiProperty() @IsUUID() booking_id!: string;
+  @ApiProperty({ description: "O'tkazgan odamning ismi (klub bank ilovasida solishtiradi)" }) @IsString() @MinLength(2) @MaxLength(80) payer_name!: string;
+  @ApiProperty({ example: '4321', description: "Jo'natuvchi kartaning oxirgi 4 raqami" }) @Matches(/^\d{4}$/) payer_card_last4!: string;
+}
+
+export class RejectTransferDto {
+  @ApiProperty() @IsString() @MinLength(2) @MaxLength(300) reason!: string;
+}
+
+export class CompleteRefundDto {
+  @ApiPropertyOptional({ description: "O'tkazma cheki/raqami" }) @IsOptional() @IsString() @MaxLength(120) reference?: string;
+}
+
+export class RefundListQuery extends PageQuery {
+  @ApiPropertyOptional() @IsOptional() @IsUUID() club_id?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() branch_id?: string;
+  @ApiPropertyOptional({ enum: ['PENDING', 'COMPLETED', 'FAILED'] }) @IsOptional() @IsIn(['PENDING', 'COMPLETED', 'FAILED']) status?: string;
 }
 
 export class DemoConfirmDto {

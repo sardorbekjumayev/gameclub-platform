@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Heart, Home, LogIn, Map, Search, UserCircle } from "lucide-react";
+import { CalendarDays, Gamepad2, Heart, Home, LogIn, Map, Search, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LocaleSwitcher } from "@/components/locale-switcher";
@@ -18,6 +18,7 @@ export function Header() {
   const links = [
     { href: "/clubs", label: t("nav.clubs"), icon: Search, show: true },
     { href: "/map", label: t("nav.map"), icon: Map, show: true },
+    { href: "/rentals", label: t("nav.rentals"), icon: Gamepad2, show: true },
     { href: "/bookings", label: t("nav.bookings"), icon: CalendarDays, show: !!me },
     { href: "/favorites", label: t("nav.favorites"), icon: Heart, show: !!me },
   ].filter((l) => l.show);
@@ -26,6 +27,7 @@ export function Header() {
     { href: "/", label: t("nav.home"), icon: Home },
     { href: "/clubs", label: t("nav.clubs"), icon: Search },
     { href: "/map", label: t("nav.map"), icon: Map },
+    { href: "/rentals", label: t("nav.rentals"), icon: Gamepad2 },
     ...(me
       ? [
           { href: "/bookings", label: t("nav.bookings"), icon: CalendarDays },

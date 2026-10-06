@@ -11,10 +11,14 @@ const LIVE_EVENTS = [
   "booking.created",
   "booking.updated",
   "booking.cancelled",
+  "rental.created",
+  "rental.updated",
   "session.started",
   "session.updated",
   "session.ended",
   "payment.completed",
+  "payment.transfer_pending",
+  "payment.transfer_rejected",
 ] as const;
 
 /**

@@ -40,7 +40,9 @@
     ".next-club/types/**/*.ts",
     ".next-club/dev/types/**/*.ts",
     ".next-desk/types/**/*.ts",
-    ".next-desk/dev/types/**/*.ts"
+    ".next-desk/dev/types/**/*.ts",
+    ".next-rentaltest/types/**/*.ts",
+    ".next-rentaltest/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

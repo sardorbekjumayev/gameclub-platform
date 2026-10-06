@@ -15,7 +15,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { assertCan, can, scopeFilter, scopeWhere } from '../rbac/access';
 import { Grant } from '../rbac/rbac.service';
 import { SettingsService } from '../settings/settings.service';
-import { CashPaymentDto, CloseShiftDto, OpenShiftDto, PaymentListQuery, RefundDto, ShiftListQuery } from './dto/payments.dto';
+import { CashPaymentDto, CloseShiftDto, CompleteRefundDto, OpenShiftDto, PaymentListQuery, RefundDto, RefundListQuery, RejectTransferDto, ShiftListQuery, TransferPaymentDto } from './dto/payments.dto';
 import { FinanceService } from './finance.service';
 import { PaymentProviders } from './providers/registry';
 
@@ -124,6 +124,11 @@ export class PaymentsService {
             await tx.booking_events.create({ data: { id: uuidv7(), booking_id: b.id, type: 'AUTO_REFUND_AFTER_EXPIRY' } });
             autoRefunded = true;
           }
+        } else if (b.status === 'CANCELLED') {
+          // Bron bekor qilingandan keyin tasdiqlangan to'lov (masalan kartaga o'tkazma) — to'liq qaytariladi
+          await this.finance.refundBooking(tx, b.id, p.amount, 'Payment for a cancelled booking', null);
+          await tx.booking_events.create({ data: { id: uuidv7(), booking_id: b.id, type: 'AUTO_REFUND_CANCELLED' } });
+          autoRefunded = true;
         }
       }
       return { status: 'PAID' as const, payment: p, autoRefunded };
@@ -138,11 +143,123 @@ export class PaymentsService {
         await this.notifications.notify([b.customer_id], 'BOOKING_CONFIRMED', { code: b.code, club: branch?.club.name ?? '', when: fmtWhen(b.start_at, branch?.timezone) }, { booking_id: b.id });
         await this.notifications.notifyClubStaff(b.club_id, b.branch_id, 'NEW_BOOKING', { code: b.code, when: fmtWhen(b.start_at, branch?.timezone), devices: '' }, { booking_id: b.id });
       }
-      if (outcome.autoRefunded) await this.notifications.notify([p.user_id], 'REFUND_COMPLETED', { amount: fmtMoney(p.amount), code: b?.code ?? '' });
+      if (outcome.autoRefunded) await this.notifications.notify([p.user_id], p.method === 'CARD_TRANSFER' ? 'REFUND_PENDING' : 'REFUND_COMPLETED', { amount: fmtMoney(p.amount), code: b?.code ?? '' });
     } else {
       await this.notifications.notify([p.user_id], 'PAYMENT_FAILED', { code: b?.code ?? '' }, { booking_id: p.booking_id });
     }
     return { processed: true, status: outcome.status, booking_status: b?.status ?? null };
+  }
+
+  // ---------- Kartaga o'tkazma (CARD_TRANSFER) ----------
+
+  /**
+   * Mijoz klub kartasiga o'tkazganini bildiradi → payment PROCESSING, hold klub tekshirishi uchun uzaytiriladi.
+   * Pul platformadan o'tmaydi: komissiya va payout'ga kirmaydi (naqd kabi).
+   */
+  async transfer(userId: string, dto: TransferPaymentDto) {
+    const b = await this.prisma.bookings.findFirst({ where: { id: dto.booking_id, customer_id: userId } });
+    if (!b) throw new AppException('NOT_FOUND', 'Booking not found');
+    if (!['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'ACTIVE'].includes(b.status)) throw new AppException('CONFLICT', `Cannot pay a ${b.status} booking`);
+    if (b.status === 'PENDING_PAYMENT' && b.hold_expires_at && b.hold_expires_at <= new Date()) throw new AppException('BOOKING_HOLD_EXPIRED', 'Hold expired');
+    const club = await this.prisma.clubs.findUniqueOrThrow({ where: { id: b.club_id }, select: { transfer_card_number: true } });
+    if (!club.transfer_card_number) throw new AppException('PAYMENT_FAILED', 'Card transfer is not available for this club');
+    const due = b.total_amount - b.paid_amount;
+    if (due <= 0n) throw new AppException('PAYMENT_ALREADY_PAID', 'Booking is already paid');
+    const minutes = (await this.settings.get<number>('payments.transfer_confirm_minutes')) ?? 60;
+    const payment = await this.prisma.$transaction(async (tx) => {
+      const open = await tx.payments.findFirst({ where: { booking_id: b.id, method: 'CARD_TRANSFER', status: 'PROCESSING' } });
+      if (open) throw new AppException('CONFLICT', 'Transfer is already awaiting confirmation', { reason: 'TRANSFER_PENDING', payment_id: open.id });
+      const p = await tx.payments.create({
+        data: {
+          id: uuidv7(), booking_id: b.id, user_id: userId, club_id: b.club_id, branch_id: b.branch_id, amount: due, method: 'CARD_TRANSFER', provider: 'CARD_TRANSFER', status: 'PROCESSING',
+          provider_payload: { payer_name: dto.payer_name.trim(), payer_card_last4: dto.payer_card_last4, card_last4: club.transfer_card_number!.slice(-4) },
+        },
+      });
+      const until = new Date(Date.now() + minutes * 60_000);
+      if (b.status === 'PENDING_PAYMENT' && b.hold_expires_at && b.hold_expires_at < until) await tx.bookings.update({ where: { id: b.id }, data: { hold_expires_at: until } });
+      await tx.booking_events.create({ data: { id: uuidv7(), booking_id: b.id, type: 'TRANSFER_SUBMITTED', actor_id: userId, data: { payment_id: p.id, amount: Number(due) } } });
+      return p;
+    });
+    await this.notifications.notifyClubStaff(b.club_id, b.branch_id, 'TRANSFER_PENDING', { code: b.code, payer: dto.payer_name.trim(), last4: dto.payer_card_last4, amount: fmtMoney(due) }, { booking_id: b.id, payment_id: payment.id });
+    this.realtime.branch(b.branch_id, 'payment.transfer_pending', { booking_id: b.id, payment_id: payment.id });
+    return payment;
+  }
+
+  private async loadTransfer(id: string, grants: Grant[]) {
+    const p = await this.prisma.payments.findUnique({ where: { id } });
+    if (!p || p.method !== 'CARD_TRANSFER' || !can(grants, 'payments.create', { club_id: p.club_id, branch_id: p.branch_id })) throw new AppException('NOT_FOUND', 'Payment not found');
+    if (p.status !== 'PROCESSING') throw new AppException('CONFLICT', `Payment is ${p.status}`);
+    return p;
+  }
+
+  /** Klub pul kelganini ko'rdi → webhook bilan bir xil yo'l (PAID, bron CONFIRMED, muddati o'tgan bo'lsa qayta band/refund). */
+  async confirmTransfer(id: string, grants: Grant[], actor: Actor) {
+    const p = await this.loadTransfer(id, grants);
+    const res = await this.handleEvent({ provider: 'CARD_TRANSFER', event_id: `transfer-${id}-confirm`, payment_id: id, status: 'PAID', raw: { confirmed_by: actor.id } });
+    await this.audit.log({ actor_id: actor.id, club_id: p.club_id, action: 'payment.transfer.confirm', target_type: 'payment', target_id: id, new_value: { amount: Number(p.amount), booking_id: p.booking_id }, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
+    if (p.branch_id) this.realtime.branch(p.branch_id, 'payment.completed', { booking_id: p.booking_id, payment_id: id });
+    return res;
+  }
+
+  /** Pul kelmagan → FAILED; bron hold'i davom etadi, mijoz qayta yuborishi mumkin. */
+  async rejectTransfer(id: string, dto: RejectTransferDto, grants: Grant[], actor: Actor) {
+    const p = await this.loadTransfer(id, grants);
+    await this.prisma.$transaction(async (tx) => {
+      const r = await tx.payments.updateMany({ where: { id, status: 'PROCESSING' }, data: { status: 'FAILED', failed_reason: dto.reason } });
+      if (!r.count) throw new AppException('CONFLICT', 'Payment was already processed');
+      if (p.booking_id) await tx.booking_events.create({ data: { id: uuidv7(), booking_id: p.booking_id, type: 'TRANSFER_REJECTED', actor_id: actor.id, data: { payment_id: id, reason: dto.reason } } });
+      await this.audit.log({ actor_id: actor.id, club_id: p.club_id, action: 'payment.transfer.reject', target_type: 'payment', target_id: id, new_value: { reason: dto.reason }, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id }, tx);
+    });
+    const b = p.booking_id ? await this.prisma.bookings.findUnique({ where: { id: p.booking_id }, select: { code: true } }) : null;
+    await this.notifications.notify([p.user_id], 'TRANSFER_REJECTED', { code: b?.code ?? '', reason: dto.reason }, { booking_id: p.booking_id, payment_id: id });
+    if (p.branch_id) this.realtime.branch(p.branch_id, 'payment.transfer_rejected', { booking_id: p.booking_id, payment_id: id });
+    return { ...p, status: 'FAILED', failed_reason: dto.reason };
+  }
+
+  // ---------- Qaytarishlar (qo'lda bajariladiganlari) ----------
+
+  async refunds(q: RefundListQuery, grants: Grant[]) {
+    // refunds jadvalida branch_id yo'q — scope (klub/filial) to'lov orqali tekshiriladi
+    const payWhere: Prisma.paymentsWhereInput = {
+      ...(scopeWhere(scopeFilter(grants, 'payments.refund')) as Prisma.paymentsWhereInput),
+      ...(q.club_id ? { club_id: q.club_id } : {}),
+      ...(q.branch_id ? { branch_id: q.branch_id } : {}),
+      refunded_amount: { gt: 0 },
+    };
+    const paymentIds = (await this.prisma.payments.findMany({ where: payWhere, select: { id: true } })).map((p) => p.id);
+    const where: Prisma.refundsWhereInput = { payment_id: { in: paymentIds }, ...(q.status ? { status: q.status } : {}) };
+    const [rows, total] = await Promise.all([
+      this.prisma.refunds.findMany({ where, orderBy: { created_at: 'desc' }, skip: (q.page - 1) * q.limit, take: q.limit }),
+      this.prisma.refunds.count({ where }),
+    ]);
+    const pays = await this.prisma.payments.findMany({ where: { id: { in: rows.map((r) => r.payment_id) } }, select: { id: true, method: true, provider: true, provider_payload: true, user_id: true, branch_id: true } });
+    const bookings = await this.prisma.bookings.findMany({ where: { id: { in: rows.map((r) => r.booking_id).filter((x): x is string => !!x) } }, select: { id: true, code: true, start_at: true } });
+    const users = await this.prisma.users.findMany({ where: { id: { in: pays.map((p) => p.user_id).filter((x): x is string => !!x) } }, select: { id: true, phone: true, first_name: true, last_name: true } });
+    const pById = new Map(pays.map((p) => [p.id, p]));
+    const bById = new Map(bookings.map((b) => [b.id, b]));
+    const uById = new Map(users.map((u) => [u.id, u]));
+    return new Paginated(
+      rows.map((r) => {
+        const p = pById.get(r.payment_id);
+        return { ...r, payment: p ?? null, booking: r.booking_id ? bById.get(r.booking_id) ?? null : null, customer: p?.user_id ? uById.get(p.user_id) ?? null : null };
+      }),
+      { page: q.page, limit: q.limit, total },
+    );
+  }
+
+  async completeRefund(id: string, dto: CompleteRefundDto, grants: Grant[], actor: Actor) {
+    const r = await this.prisma.refunds.findUnique({ where: { id } });
+    const p = r ? await this.prisma.payments.findUnique({ where: { id: r.payment_id } }) : null;
+    if (!r || !p || !can(grants, 'payments.refund', { club_id: p.club_id, branch_id: p.branch_id })) throw new AppException('NOT_FOUND', 'Refund not found');
+    if (r.status !== 'PENDING') throw new AppException('CONFLICT', `Refund is ${r.status}`);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.refunds.update({ where: { id }, data: { status: 'COMPLETED', completed_at: new Date(), provider_refund_id: dto.reference ?? r.provider_refund_id } });
+      await this.audit.log({ actor_id: actor.id, club_id: r.club_id, action: 'refund.complete', target_type: 'refund', target_id: id, new_value: { amount: Number(r.amount), reference: dto.reference ?? null }, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id }, tx);
+      return u;
+    });
+    const b = r.booking_id ? await this.prisma.bookings.findUnique({ where: { id: r.booking_id }, select: { code: true } }) : null;
+    await this.notifications.notify([p.user_id], 'REFUND_COMPLETED', { amount: fmtMoney(r.amount), code: b?.code ?? '' }, { booking_id: r.booking_id });
+    return updated;
   }
 
   // ---------- Operator: naqd/terminal ----------
@@ -188,7 +305,7 @@ export class PaymentsService {
       return r;
     });
     const b = p.booking_id ? await this.prisma.bookings.findUnique({ where: { id: p.booking_id } }) : null;
-    await this.notifications.notify([p.user_id], 'REFUND_COMPLETED', { amount: fmtMoney(amount), code: b?.code ?? '' });
+    await this.notifications.notify([p.user_id], refund.status === 'COMPLETED' ? 'REFUND_COMPLETED' : 'REFUND_PENDING', { amount: fmtMoney(amount), code: b?.code ?? '' });
     return refund;
   }
 
@@ -217,11 +334,12 @@ export class PaymentsService {
       this.prisma.payments.aggregate({ where: { ...where, status: { in: ['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED'] } }, _sum: { amount: true, refunded_amount: true, commission_amount: true } }),
     ]);
     const bookings = await this.prisma.bookings.findMany({ where: { id: { in: rows.map((r) => r.booking_id).filter((x): x is string => !!x) } }, select: { id: true, code: true } });
+    const rentals = await this.prisma.rentals.findMany({ where: { id: { in: rows.map((r) => r.rental_id).filter((x): x is string => !!x) } }, select: { id: true, code: true } });
     const clubs = await this.prisma.clubs.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.club_id))] } }, select: { id: true, name: true } });
-    const code = new Map(bookings.map((b) => [b.id, b.code]));
+    const code = new Map([...bookings, ...rentals].map((b) => [b.id, b.code]));
     const club = new Map(clubs.map((c) => [c.id, c.name]));
     return new Paginated(
-      rows.map((r) => ({ ...r, booking_code: r.booking_id ? code.get(r.booking_id) ?? null : null, club_name: club.get(r.club_id) ?? null })),
+      rows.map((r) => ({ ...r, booking_code: (r.booking_id ?? r.rental_id) ? code.get((r.booking_id ?? r.rental_id)!) ?? null : null, club_name: club.get(r.club_id) ?? null })),
       {
         page: q.page, limit: q.limit, total,
         summary: { collected: Number(sums._sum.amount ?? 0n), refunded: Number(sums._sum.refunded_amount ?? 0n), commission: Number(sums._sum.commission_amount ?? 0n) },

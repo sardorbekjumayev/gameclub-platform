@@ -170,6 +170,24 @@ export default function Home() {
           ))}
         </section>
 
+        {/* KONSOL ARENDASI */}
+        <Link
+          href="/rentals"
+          className="group mt-6 flex flex-wrap items-center gap-5 rounded-[24px] border border-line-soft bg-surface p-6 transition hover:border-accent/50 sm:p-7"
+        >
+          <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-accent text-on-accent">
+            <Gamepad2 className="h-7 w-7" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-xl font-bold sm:text-2xl">{t("home.rent.title")}</div>
+            <div className="text-sm text-muted">{t("home.rent.text")}</div>
+          </div>
+          <span className="inline-flex items-center gap-1.5 text-sm font-bold text-accent group-hover:underline">
+            {t("home.rent.cta")}
+            <ArrowRight className="h-4 w-4" />
+          </span>
+        </Link>
+
         {/* TOP KLUBLAR */}
         <section className="mt-20 space-y-6">
           <div className="flex flex-wrap items-end justify-between gap-3">

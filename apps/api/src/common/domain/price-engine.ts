@@ -164,6 +164,18 @@ export const DEFAULT_CANCELLATION_POLICY: CancellationPolicy & { free_cancel_min
   no_show_refund_percent: 0,
 };
 
+export type ClubCancellationPolicy = typeof DEFAULT_CANCELLATION_POLICY;
+
+/** Klub JSON'idan (null bo'lishi mumkin) to'liq siyosat: yetishmagan maydonlar default'dan. */
+export function policyFrom(json: unknown): ClubCancellationPolicy {
+  return { ...DEFAULT_CANCELLATION_POLICY, ...((json as object | null) ?? {}) };
+}
+
+/** Kartani ko'rsatish/log uchun: `8600 •••• •••• 1234`. */
+export function maskCard(n: string | null | undefined) {
+  return n ? `${n.slice(0, 4)} •••• •••• ${n.slice(-4)}` : null;
+}
+
 export function refundPercent(policy: CancellationPolicy, start: Date, now: Date): number {
   const before = (start.getTime() - now.getTime()) / 60000;
   const rules = [...policy.rules].sort((a, b) => b.min_minutes_before_start - a.min_minutes_before_start);

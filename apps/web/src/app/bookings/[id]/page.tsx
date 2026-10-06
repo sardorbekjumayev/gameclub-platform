@@ -5,15 +5,19 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import { Suspense, useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import { BookingReview } from "@/components/booking-review";
+import { BookingTicket } from "@/components/booking-ticket";
 import { ReschedulePanel } from "@/components/reschedule-panel";
-import { BOOKING_TONE, RequireAuth } from "@/components/require-auth";
-import { Alert, Badge, Button, Card, Spinner, cx } from "@/components/ui";
+import { RequireAuth } from "@/components/require-auth";
+import { TransferPay } from "@/components/transfer-pay";
+import { Alert, Button, Spinner, cx } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
-import { fmtDate, fmtTime } from "@/lib/format";
 import { session } from "@/lib/session";
 import type { BookingDetail, PaymentProvider } from "@/lib/types";
 import { idemKey, useApi } from "@/lib/use-api";
+
+const BLANK_PX = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 export default function BookingPage() {
   return (
@@ -51,6 +55,7 @@ function Booking() {
   const b = booking.data;
   const showQr = !!b && ["CONFIRMED", "CHECKED_IN"].includes(b.status);
   const qr = useApi<{ code: string; qr_payload: string }>(showQr ? `/bookings/${id}/qr` : null);
+  const transfer = b?.transfer ?? null;
   const [qrImg, setQrImg] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "error" | "success"; text: string } | null>(null);
@@ -59,7 +64,7 @@ function Booking() {
   useEffect(() => {
     if (!qr.data) return;
     let alive = true;
-    QRCode.toDataURL(qr.data.qr_payload, { width: 240, margin: 1, color: { dark: "#0E0F13", light: "#FFFFFF" } }).then((url) => alive && setQrImg(url));
+    QRCode.toDataURL(qr.data.qr_payload, { width: 216, margin: 1, color: { dark: "#0E0F13", light: "#FFFFFF" } }).then((url) => alive && setQrImg(url));
     return () => {
       alive = false;
     };
@@ -69,7 +74,7 @@ function Booking() {
   const [providers, setProviders] = useState<PaymentProvider[] | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const [showResched, setShowResched] = useState(false);
-  const payOnlineNow = b?.status === "PENDING_PAYMENT" && b.price_snapshot?.payment_mode !== "AT_CLUB";
+  const payOnlineNow = b?.status === "PENDING_PAYMENT" && b.price_snapshot?.payment_mode !== "AT_CLUB" && !b.transfer;
   useEffect(() => {
     if (!payOnlineNow || providers) return;
     let alive = true;
@@ -106,8 +111,16 @@ function Booking() {
     return () => clearInterval(iv);
   }, [paidReturn, stillPending, pollDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Hold muddati tugasa — holatni yangilash
+  // Kartaga o'tkazma klub tomonidan tekshirilayotganda — har 10 s holatni yangilash
   const { reload } = booking;
+  const transferPending = !!transfer?.pending;
+  useEffect(() => {
+    if (!transferPending) return;
+    const iv = setInterval(reload, 10_000);
+    return () => clearInterval(iv);
+  }, [transferPending, reload]);
+
+  // Hold muddati tugasa — holatni yangilash
   useEffect(() => {
     if (left === 0) reload();
   }, [left, reload]);
@@ -126,8 +139,35 @@ function Booking() {
     }
   }
 
+  /** Chiptani PNG qilib yuklab olish (sahifa fonida, 2x sifat). Tashqi logotip CORS'da ochilmasa — o'rniga bo'sh joy. */
+  async function download() {
+    const node = document.getElementById("booking-ticket");
+    if (!node || !b) return;
+    setBusy("download");
+    setMsg(null);
+    try {
+      const { toBlob } = await import("html-to-image");
+      const blob = await toBlob(node, { pixelRatio: 2, cacheBust: true, backgroundColor: getComputedStyle(document.body).backgroundColor, imagePlaceholder: BLANK_PX });
+      if (!blob) throw new Error("empty");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `gameclub-${b.code}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch {
+      setMsg({ tone: "error", text: t("ticket.downloadFailed") });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function cancel() {
-    if (!confirm(t("booking.confirmCancel"))) return;
+    const rp = b?.refund_preview;
+    const question = rp && b.paid_amount > 0 ? t("booking.confirmCancelPreview", { amount: formatMoney(rp.amount, locale), p: rp.percent }) : t("booking.confirmCancelSimple");
+    if (!confirm(question)) return;
     setBusy("cancel");
     setMsg(null);
     try {
@@ -149,7 +189,6 @@ function Booking() {
       </main>
     );
 
-  const tz = b.branch.timezone;
   const canReschedule = b.can_reschedule;
   const payOnline = b.status === "PENDING_PAYMENT" && b.price_snapshot?.payment_mode !== "AT_CLUB";
 
@@ -170,85 +209,68 @@ function Booking() {
       {paidReturn && b.status === "PENDING_PAYMENT" && pollDone && <Alert tone="info">{t("booking.paymentPending")}</Alert>}
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
 
-      <Card className="space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="font-display text-2xl font-bold">{b.branch.club.name}</div>
-            <div className="text-sm text-muted">
-              {b.branch.name} · {b.branch.address}
+      {/* Kartaga o'tkazma: to'lanmagan bron yoki qolgan qarz (masalan ko'chirishda narx oshganda); "klubda to'lash" tanlanganda emas */}
+      {transfer && b.price_snapshot?.payment_mode !== "AT_CLUB" && (
+        <TransferPay
+          booking={b}
+          left={payOnline ? left : null}
+          onSent={() => {
+            setMsg(null);
+            reload();
+          }}
+        />
+      )}
+
+      {payOnline && !transfer && (
+        <div className="space-y-2 rounded-2xl border border-warn/40 bg-warn/10 p-4">
+          <div className="text-sm">{left !== null && left > 0 ? t("booking.payWithin", { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` }) : t("booking.payNow")}</div>
+          {providers && providers.length > 1 && (
+            <div className="grid grid-cols-3 gap-2">
+              {providers.map((p) => (
+                <button
+                  key={p.code}
+                  onClick={() => setProvider(p.code)}
+                  className={cx("h-11 rounded-xl text-sm font-bold", provider === p.code ? "bg-accent text-on-accent" : "border border-line bg-surface-2")}
+                >
+                  {p.name || p.code}
+                </button>
+              ))}
             </div>
-          </div>
-          <Badge tone={BOOKING_TONE[b.status]}>{t(`bookingStatus.${b.status}` as never)}</Badge>
-        </div>
-
-        {showQr && (
-          <div className="flex flex-col items-center gap-2 rounded-2xl bg-surface-2 p-5">
-            {qrImg ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={qrImg} alt={b.code} width={240} height={240} className="rounded-xl" />
-            ) : (
-              <Spinner className="h-6 w-6" />
-            )}
-            <div className="font-mono text-2xl font-bold tracking-widest">{b.code}</div>
-            <div className="text-center text-xs text-muted">{t("booking.showQr")}</div>
-          </div>
-        )}
-
-        <dl className="space-y-1.5 text-sm">
-          <Row label={t("booking.when")} value={`${fmtDate(b.start_at, t, tz)}, ${fmtTime(b.start_at, tz)}–${fmtTime(b.end_at, tz)}`} />
-          <Row label={t("booking.devices")} value={b.items.map((i) => i.device?.name ?? "—").join(", ")} />
-          {!showQr && <Row label={t("booking.code")} value={b.code} mono />}
-          <Row label={t("book.total")} value={formatMoney(b.total_amount, locale)} />
-          {b.paid_amount > 0 && <Row label={t("booking.paid")} value={formatMoney(b.paid_amount, locale)} />}
-          {b.amount_due > 0 && <Row label={t("booking.due")} value={formatMoney(b.amount_due, locale)} />}
-          {b.refund_amount != null && b.refund_amount > 0 && <Row label={t("booking.refund")} value={formatMoney(b.refund_amount, locale)} />}
-        </dl>
-
-        {payOnline && (
-          <div className="space-y-2 rounded-2xl border border-warn/40 bg-warn/10 p-4">
-            <div className="text-sm">{left !== null && left > 0 ? t("booking.payWithin", { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` }) : t("booking.payNow")}</div>
-            {providers && providers.length > 1 && (
-              <div className="grid grid-cols-3 gap-2">
-                {providers.map((p) => (
-                  <button
-                    key={p.code}
-                    onClick={() => setProvider(p.code)}
-                    className={cx("h-11 rounded-xl text-sm font-bold", provider === p.code ? "bg-accent text-on-accent" : "border border-line bg-surface-2")}
-                  >
-                    {p.name || p.code}
-                  </button>
-                ))}
-              </div>
-            )}
-            <Button size="lg" className="w-full" loading={busy === "pay"} disabled={!providers} onClick={pay}>
-              {t("booking.payAmount", { amount: formatMoney(b.amount_due, locale) })}
-            </Button>
-          </div>
-        )}
-        {b.status === "PENDING_PAYMENT" && b.price_snapshot?.payment_mode === "AT_CLUB" && <Alert tone="info">{t("booking.payAtClub")}</Alert>}
-        {b.status === "EXPIRED" && <Alert tone="info">{t("booking.expired")}</Alert>}
-
-        <div className="flex flex-wrap gap-2">
-          <a
-            href={`https://yandex.uz/maps/?rtext=~${b.branch.latitude},${b.branch.longitude}&rtt=auto`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-11 flex-1 items-center justify-center rounded-xl border border-line bg-surface px-4 text-sm font-semibold hover:border-muted/60"
-          >
-            {t("booking.route")}
-          </a>
-          {canReschedule && !showResched && (
-            <Button variant="secondary" className="flex-1" onClick={() => setShowResched(true)}>
-              {t("booking.reschedule.open")}
-            </Button>
           )}
-          {b.can_cancel && (
-            <Button variant="danger" className="flex-1" loading={busy === "cancel"} onClick={cancel}>
-              {t("booking.cancel")}
-            </Button>
-          )}
+          <Button size="lg" className="w-full" loading={busy === "pay"} disabled={!providers} onClick={pay}>
+            {t("booking.payAmount", { amount: formatMoney(b.amount_due, locale) })}
+          </Button>
         </div>
-      </Card>
+      )}
+      {b.status === "PENDING_PAYMENT" && b.price_snapshot?.payment_mode === "AT_CLUB" && <Alert tone="info">{t("booking.payAtClub")}</Alert>}
+      {b.status === "EXPIRED" && <Alert tone="info">{t("booking.expired")}</Alert>}
+
+      <BookingTicket booking={b} qrImg={qrImg} showQr={showQr} />
+
+      <div className="grid grid-cols-2 gap-2">
+        <a
+          href={`https://yandex.uz/maps/?rtext=~${b.branch.latitude},${b.branch.longitude}&rtt=auto`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-surface px-4 text-sm font-semibold hover:border-muted/60"
+        >
+          {t("booking.route")}
+        </a>
+        <Button variant="secondary" loading={busy === "download"} onClick={download}>
+          <Download className="h-4 w-4" />
+          {t("ticket.download")}
+        </Button>
+        {canReschedule && !showResched && (
+          <Button variant="secondary" onClick={() => setShowResched(true)}>
+            {t("booking.reschedule.open")}
+          </Button>
+        )}
+        {b.can_cancel && (
+          <Button variant="danger" loading={busy === "cancel"} onClick={cancel}>
+            {t("booking.cancel")}
+          </Button>
+        )}
+      </div>
       {canReschedule && showResched && (
         <ReschedulePanel
           booking={b}
@@ -260,17 +282,7 @@ function Booking() {
           }}
         />
       )}
-      {b.can_cancel && <p className="text-xs text-muted">{t("booking.cancelPolicy")}</p>}
       {b.status === "COMPLETED" && <BookingReview key={b.review?.id ?? "new"} booking={b} onChange={reload} />}
     </main>
-  );
-}
-
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex justify-between gap-4">
-      <dt className="text-muted">{label}</dt>
-      <dd className={mono ? "font-mono" : "text-right font-semibold"}>{value}</dd>
-    </div>
   );
 }

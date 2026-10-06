@@ -3,6 +3,7 @@
 import { formatMoney } from "@gc/types";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { RefundPolicy } from "@/components/refund-policy";
 import { SeatMap } from "@/components/seat-map";
 import { Alert, Button, Card, Input, Spinner, cx } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
@@ -29,7 +30,11 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
   const [duration, setDuration] = useState<number>(120);
   const [start, setStart] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
-  const [payMode, setPayMode] = useState<"ONLINE" | "AT_CLUB">("ONLINE");
+  const [payModeRaw, setPayMode] = useState<"ONLINE" | "AT_CLUB">("ONLINE");
+  const cardTransfer = !!branch.payment_options?.card_transfer;
+  const payModes = branch.payment_options?.pay_at_club === false ? (["ONLINE"] as const) : (["ONLINE", "AT_CLUB"] as const);
+  // Klub "klubda to'lash"ni o'chirgan bo'lsa — faqat onlayn/karta
+  const payMode = payModes.length === 1 ? "ONLINE" : payModeRaw;
   const [openedAt] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +45,8 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
 
   const slots = useApi<Slots>(`/branches/${branch.id}/slots?date=${date}&duration=${duration}`);
   const avail = useApi<Availability>(start ? `/branches/${branch.id}/availability?start_at=${encodeURIComponent(start)}&duration=${duration}` : null);
+
+  const holdMinutes = avail.data?.hold_minutes ?? branch.booking_settings.hold_minutes;
 
   // O'tib ketgan slotlar ko'rsatilmaydi (sahifa ochilgan vaqt bo'yicha)
   const futureSlots = (slots.data?.slots ?? []).filter((s) => new Date(s.start_at).getTime() >= openedAt);
@@ -206,14 +213,14 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
             {fmtDate(start, t, branch.timezone)}, {fmtTime(start, branch.timezone)}–{fmtTime(new Date(new Date(start).getTime() + duration * 60_000).toISOString(), branch.timezone)} ·{" "}
             {selected.map((d) => d.name).join(", ")}
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            {(["ONLINE", "AT_CLUB"] as const).map((m) => (
+          <div className={cx("grid gap-2", payModes.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
+            {payModes.map((m) => (
               <button key={m} onClick={() => setPayMode(m)} className={cx("h-11 rounded-xl text-sm font-bold", payMode === m ? "bg-accent text-on-accent" : "border border-line bg-surface-2")}>
-                {t(`book.pay.${m}` as never)}
+                {m === "ONLINE" && cardTransfer ? t("book.pay.CARD") : t(`book.pay.${m}`)}
               </button>
             ))}
           </div>
-          {payMode === "ONLINE" && <p className="text-xs text-muted">{t("book.holdHint", { n: avail.data?.hold_minutes ?? branch.booking_settings.hold_minutes })}</p>}
+          {payMode === "ONLINE" && <p className="text-xs text-muted">{cardTransfer ? t("book.cardHint", { n: holdMinutes }) : t("book.holdHint", { n: holdMinutes })}</p>}
           <div className="space-y-1.5">
             <div className="flex gap-2">
               <Input
@@ -242,6 +249,7 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
               <span className="font-display text-2xl font-bold text-accent tabular-nums">{formatMoney(promoOk ? promoOk.total : total, locale)}</span>
             </span>
           </div>
+          <RefundPolicy policy={branch.cancellation_policy} />
           {error && <Alert>{error}</Alert>}
           <Button size="lg" className="w-full" loading={busy} onClick={book}>
             {me ? (payMode === "ONLINE" ? t("book.bookAndPay") : t("book.book")) : t("book.loginToBook")}

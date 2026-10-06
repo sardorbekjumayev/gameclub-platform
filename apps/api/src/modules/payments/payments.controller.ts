@@ -7,7 +7,7 @@ import { Grants } from '../../common/decorators/grants.decorator';
 import { Idempotent } from '../../common/interceptors/idempotency.interceptor';
 import { type Actor } from '../clubs/clubs.service';
 import { RbacService, type Grant } from '../rbac/rbac.service';
-import { CashPaymentDto, CloseShiftDto, CreatePaymentDto, DemoConfirmDto, OpenShiftDto, PaymentListQuery, RefundDto, ShiftListQuery } from './dto/payments.dto';
+import { CashPaymentDto, CloseShiftDto, CompleteRefundDto, CreatePaymentDto, DemoConfirmDto, OpenShiftDto, PaymentListQuery, RefundDto, RefundListQuery, RejectTransferDto, ShiftListQuery, TransferPaymentDto } from './dto/payments.dto';
 import { PaymentsService } from './payments.service';
 
 const uuid = new ParseUUIDPipe();
@@ -24,6 +24,31 @@ export class PaymentsController {
   @Post('payments') @Idempotent() @ApiOperation({ summary: 'Online to\'lov (checkout) yaratish' })
   create(@Body() dto: CreatePaymentDto, @CurrentUser() u: AuthUser) {
     return this.payments.checkout(u.id, dto.booking_id, dto.provider, dto.return_url);
+  }
+
+  @Post('payments/transfer') @Idempotent() @ApiOperation({ summary: "Mijoz: klub kartasiga o'tkazdim (klub tasdiqlashini kutadi)" })
+  transfer(@Body() dto: TransferPaymentDto, @CurrentUser() u: AuthUser) {
+    return this.payments.transfer(u.id, dto);
+  }
+
+  @Post('payments/:id/transfer/confirm') @RequirePermission('payments.create') @Idempotent() @ApiOperation({ summary: "Klub: o'tkazma keldi — bron tasdiqlanadi" })
+  confirmTransfer(@Param('id', uuid) id: string, @Grants() g: Grant[], @CurrentActor() a: Actor) {
+    return this.payments.confirmTransfer(id, g, a);
+  }
+
+  @Post('payments/:id/transfer/reject') @RequirePermission('payments.create') @Idempotent() @ApiOperation({ summary: "Klub: o'tkazma topilmadi" })
+  rejectTransfer(@Param('id', uuid) id: string, @Body() dto: RejectTransferDto, @Grants() g: Grant[], @CurrentActor() a: Actor) {
+    return this.payments.rejectTransfer(id, dto, g, a);
+  }
+
+  @Get('refunds') @RequirePermission('payments.refund') @ApiOperation({ summary: "Qaytarishlar (status=PENDING — klub qo'lda qaytarishi kerak)" })
+  refunds(@Query() q: RefundListQuery, @Grants() g: Grant[]) {
+    return this.payments.refunds(q, g);
+  }
+
+  @Post('refunds/:id/complete') @RequirePermission('payments.refund') @Idempotent() @ApiOperation({ summary: 'Klub: pul mijozga qaytarildi' })
+  completeRefund(@Param('id', uuid) id: string, @Body() dto: CompleteRefundDto, @Grants() g: Grant[], @CurrentActor() a: Actor) {
+    return this.payments.completeRefund(id, dto, g, a);
   }
 
   @Public() @Get('payments/providers') @ApiOperation({ summary: "Yoqilgan online to'lov provayderlari" })

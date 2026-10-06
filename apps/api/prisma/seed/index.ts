@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { uuidv7 } from '../../src/common/utils/id';
 import { seedDemo } from './demo';
+import { seedRentals } from './rentals';
 import { PERMISSIONS, SYSTEM_ROLES } from '../../src/modules/rbac/catalog';
 
 const prisma = new PrismaClient();
@@ -77,6 +78,7 @@ async function main() {
   await seedSuperAdmin();
   await seedPlans();
   await seedDemo(prisma);
+  await seedRentals(prisma);
   await backfillTrials();
   console.log('Seed done');
 }

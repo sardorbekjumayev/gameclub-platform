@@ -27,10 +27,13 @@
 | booking.status | PENDING_PAYMENT, CONFIRMED, CHECKED_IN, ACTIVE, COMPLETED, CANCELLED, EXPIRED, NO_SHOW |
 | booking.source | APP, WEB, WALK_IN, PHONE |
 | booking.payment_status | UNPAID, PARTIAL, PAID, REFUNDED, PARTIALLY_REFUNDED |
+| rental_item.type | PS5, PS4, XBOX, NINTENDO_SWITCH, VR, OTHER |
+| rental.status | REQUESTED, CONFIRMED, ACTIVE, RETURNED, CANCELLED, REJECTED, EXPIRED |
+| rental.rate_unit / fulfillment / deposit_status | HOUR, DAY / PICKUP, DELIVERY / NONE, HELD, RETURNED, KEPT |
 | session.status | WAITING, ACTIVE, PAUSED, COMPLETED, CANCELLED |
 | session_charge.type | EXTENSION, OVERTIME, ADJUSTMENT, PRODUCT |
 | payment.status | PENDING, PROCESSING, PAID, FAILED, REFUNDED, PARTIALLY_REFUNDED, CANCELLED |
-| payment.method | ONLINE_CARD, WALLET, CASH, TERMINAL |
+| payment.method | ONLINE_CARD, WALLET, CASH, TERMINAL, CARD_TRANSFER |
 | refund.status | PENDING, COMPLETED, FAILED |
 | subscription.status | TRIALING, ACTIVE, PAST_DUE, CANCELLED, EXPIRED |
 | plan.code | FREE, STARTER, PRO, ENTERPRISE |
@@ -59,7 +62,7 @@ Ustun ro'yxatida `*` = NOT NULL. Standart ustunlar (`id`, `created_at`, `updated
 **device_tokens** 🆕 (push): `user_id*`, `platform* (ios|android|web)`, `token* unique`, `app_version`, `locale`, `last_seen_at`, `disabled_at`.
 
 ### 3.2 Club, filial, xona
-**clubs**: `owner_id*`, `name*`, `slug* unique`, `logo_file_id`, `description`, `phone`, `telegram`, `instagram`, `website`, `rules text`, `amenities text[]`, `min_booking_minutes int`, `cancellation_policy jsonb` (§5), `status*`, `rejection_reason`, `approved_by`, `approved_at`, `suspended_reason`, `rating_avg numeric(3,2)`, `rating_count int`, `settings jsonb` (booking qoidalari), `deleted_at`.
+**clubs**: `owner_id*`, `name*`, `slug* unique`, `logo_file_id`, `description`, `phone`, `telegram`, `instagram`, `website`, `rules text`, `amenities text[]`, `min_booking_minutes int`, `cancellation_policy jsonb` (§5), `transfer_card_number`, `transfer_card_holder` (mijoz o'tkazadigan karta; faqat to'lanmagan bron egasiga ko'rsatiladi), `status*`, `rejection_reason`, `approved_by`, `approved_at`, `suspended_reason`, `rating_avg numeric(3,2)`, `rating_count int`, `settings jsonb` (booking qoidalari), `deleted_at`.
 **club_documents** 🆕: `club_id*`, `type* (LICENSE|TAX_ID|PASSPORT|OTHER)`, `file_id*`, `status* (PENDING|APPROVED|REJECTED)`, `reviewed_by`, `note`.
 **club_members**: `club_id*`, `user_id*`, `title` — xodimlar ro'yxati (ruxsatlar `user_roles` da).
 **branches**: `club_id*`, `name*`, `slug*`, `address*`, `address_details jsonb`, `location geography(Point,4326)*`, `latitude`, `longitude` (yordamchi), `phone`, `description`, `timezone* default 'Asia/Tashkent'`, `working_hours jsonb*` (§5), `status*`, `booking_settings jsonb` (slot_minutes, buffer_minutes, min_advance_minutes, max_advance_days, hold_minutes, early_checkin_minutes, grace_minutes, allow_category_booking, allow_specific_device, auto_no_show), `rating_avg`, `rating_count`, `deleted_at`.
@@ -88,7 +91,7 @@ Ustun ro'yxatida `*` = NOT NULL. Standart ustunlar (`id`, `created_at`, `updated
 **waitlist_entries** 🆕 (V1.5): `user_id*`, `branch_id*`, `desired_start_at*`, `duration_minutes*`, `category_id`, `status`, `notified_at`.
 
 ### 3.6 To'lov va moliya
-**payments**: `booking_id`, `session_id`, `user_id`, `club_id*`, `branch_id`, `amount*`, `currency*`, `method*`, `provider (PAYME|CLICK|UZUM|MANUAL|...)`, `provider_transaction_id`, `provider_payload jsonb`, `status*`, `paid_at`, `failed_reason`, `received_by` (operator), `shift_id`, `idempotency_key`, `commission_bps int`, `commission_amount`, `club_amount`. Unique (provider, provider_transaction_id) where not null.
+**payments**: `booking_id`, `session_id`, `rental_id`, `user_id`, `club_id*`, `branch_id`, `amount*`, `currency*`, `method*`, `provider (PAYME|CLICK|UZUM|MANUAL|...)`, `provider_transaction_id`, `provider_payload jsonb`, `status*`, `paid_at`, `failed_reason`, `received_by` (operator), `shift_id`, `idempotency_key`, `commission_bps int`, `commission_amount`, `club_amount`. Unique (provider, provider_transaction_id) where not null.
 **payment_events** 🆕 (webhook logi): `provider*`, `event_id*`, `payment_id`, `raw jsonb`, `signature_valid bool`, `processed_at`. Unique (provider, event_id) — idempotentlik.
 **refunds**: `payment_id*`, `booking_id`, `amount*`, `reason`, `status*`, `provider_refund_id`, `initiated_by`, `policy_snapshot jsonb`, `completed_at`.
 **ledger_entries** 🆕: `account* (CUSTOMER|CLUB|PLATFORM|PROVIDER)`, `account_id`, `direction* (DEBIT|CREDIT)`, `amount*`, `currency`, `ref_type*`, `ref_id*`, `created_at*`. Faqat INSERT (immutable).
@@ -194,6 +197,8 @@ Diqqat: `ST_MakePoint(longitude, latitude)` — tartib **lng, lat**.
   "no_show_refund_percent": 0
 }
 ```
+Bron yaratilganda siyosat `bookings.price_snapshot.cancellation_policy` ga nusxalanadi; cancel/no-show refundi snapshot bo'yicha hisoblanadi.
+`CARD_TRANSFER` to'lovda `payments.provider_payload = {payer_name, payer_card_last4, card_last4}`; uning refundi `PENDING` bo'lib, klub qaytargach `COMPLETED`.
 
 **price_breakdown** (booking_item)
 ```json
@@ -209,6 +214,7 @@ Diqqat: `ST_MakePoint(longitude, latitude)` — tartib **lng, lat**.
 - Plans (FREE/STARTER/PRO/ENTERPRISE) limitlari bilan.
 - `platform_settings` default qiymatlari.
 - Demo: 2 klub, 3 filial (Toshkent koordinatalari), xonalar, 30 qurilma, tariflar, 20 bron, 5 sharh (faqat `NODE_ENV != production`).
+- Demo arenda (`prisma/seed/rentals.ts`): demo klub filiallarida 11 ta arenda konsoli (PS5, PS4, Xbox, Switch, VR2 — soatlik/kunlik, garov, yetkazib berish) va `customer@gameclub.local` uchun har holatdagi 9 ta arenda `RN-DEMO01..09` (qaytarilgan, mijozda, kechikkan, tasdiqlangan, yangi so'rov, bekor/rad etilgan). Konsol — filial+nom, arenda — kod bo'yicha takrorlanmaydi; to'langanlariga `payments` + `ledger_entries`.
 
 ## 7. Zaxira va saqlash muddati 🆕
 - Kunlik `pg_dump` + WAL arxiv (PITR), 30 kun saqlash; oyiga bir marta restore sinovi.
@@ -219,3 +225,7 @@ Diqqat: `ST_MakePoint(longitude, latitude)` — tartib **lng, lat**.
 Xona sxemasi o'lchami (default 10×5). Qurilma joyi `devices.layout {x,y}` — shu xona gridi ichidagi katak.
 ### rooms.decor (migratsiya `20261001150000_room_decor`)
 `JSONB [{kind, x, y}]`, default `[]` — kirish, kassa, devor, yo'lak, TV, hojatxona kataklari.
+
+### rental_items, rentals, payments.rental_id (migratsiya `20261002150000_console_rentals`)
+**rental_items** (uyga beriladigan konsol): `club_id*`, `branch_id*`, `name*`, `type*`, `description`, `image_url`, `includes text[]`, `games text[]`, `quantity* ≥1`, `price_per_hour`, `price_per_day` (tiyin; kamida bittasi NOT NULL), `min_hours`, `max_days`, `deposit_amount` (dona uchun), `delivery_available`, `delivery_fee`, `requirements`, `status (ACTIVE|INACTIVE)`, `position`, `deleted_at`.
+**rentals**: `code* unique (RN-XXXXXX)`, `item_id*`, `club_id*`, `branch_id*`, `customer_id*`, `contact_phone`, `quantity`, `rate_unit*`, `units*`, `start_at*`, `end_at*`, `unit_price`, `subtotal_amount`, `delivery_fee_amount`, `late_fee_amount`, `total_amount` (CHECK = subtotal + delivery + late), `deposit_amount`, `deposit_status`, `paid_amount`, `payment_status`, `status*`, `fulfillment`, `delivery_address`, `notes`, `item_snapshot jsonb*`, `idempotency_key` (unique customer_id+key), `confirmed_*`, `handed_over_*`, `returned_*`, `cancelled_*`, `cancel_reason`. Indekslar: (item_id, start_at), (branch_id, status, start_at), (customer_id, created_at desc). Dona soni bo'yicha band qilish exclusion constraint bilan emas — `rental_items` qatorini `FOR UPDATE` qulflab, tranzaksiyada hisoblanadi.

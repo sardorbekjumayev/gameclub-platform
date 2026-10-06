@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { uuidv7 } from '../../common/utils/id';
 import { PrismaService } from '../../database/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { bt, botLang } from '../telegram/bot/bot.i18n';
 import { FcmService } from './fcm.service';
 import { render } from './templates';
 
@@ -16,8 +17,14 @@ export interface NotificationPrefs {
 export const DEFAULT_PREFS: NotificationPrefs = { telegram: true, push: true, reminders: true, announcements: true };
 
 /** O'chirib bo'lmaydigan (tranzaksion) turlar ham IN_APP ga doim yoziladi; prefs faqat tashqi kanallar va ixtiyoriy turlarga ta'sir qiladi. */
-const REMINDER_TYPES = new Set(['BOOKING_REMINDER', 'SESSION_ENDING_SOON', 'REVIEW_REQUEST']);
+const REMINDER_TYPES = new Set(['BOOKING_REMINDER', 'SESSION_ENDING_SOON', 'REVIEW_REQUEST', 'RENTAL_ENDING_SOON']);
 const ANNOUNCEMENT_TYPES = new Set(['ANNOUNCEMENT']);
+/** Mijozning o'z broniga oid turlar — Telegram xabariga "Chiptani ko'rish" tugmasi qo'shiladi (xodim turlari emas). */
+const CUSTOMER_BOOKING_TYPES = new Set([
+  'BOOKING_CREATED', 'BOOKING_CONFIRMED', 'BOOKING_CANCELLED', 'BOOKING_EXPIRED', 'BOOKING_REMINDER', 'NO_SHOW_WARNING',
+  'PAYMENT_SUCCESS', 'PAYMENT_FAILED', 'TRANSFER_REJECTED', 'REFUND_PENDING', 'REFUND_COMPLETED',
+  'SESSION_STARTED', 'SESSION_ENDED', 'SESSION_ENDING_SOON',
+]);
 
 export interface NotifyOptions {
   /** Takror yuborishdan himoya: (user_id, dedupe_key) unique. */
@@ -73,8 +80,10 @@ export class NotificationsService {
           this.fcm.sendToUser(u.id, title, body, { type, ...data }).catch((e) => this.log.warn(`push ${type} failed: ${(e as Error).message}`));
         }
         if (tg) {
+          const bookingId = CUSTOMER_BOOKING_TYPES.has(type) && typeof data.booking_id === 'string' ? data.booking_id : null;
+          const extra = bookingId ? { reply_markup: { inline_keyboard: [[{ text: bt(botLang(u.language), 'notif.open_ticket'), callback_data: `t:${bookingId}:u` }]] } } : {};
           this.telegram
-            .sendMessage(chatId!, `<b>${escapeHtml(title)}</b>\n${escapeHtml(body)}`)
+            .sendMessage(chatId!, `<b>${escapeHtml(title)}</b>\n${escapeHtml(body)}`, extra)
             .catch((e) => this.log.warn(`telegram ${type} failed: ${(e as Error).message}`));
         }
       }
@@ -85,12 +94,12 @@ export class NotificationsService {
   }
 
   /** Klub xodimlari (shu permission bilan) — masalan NEW_BOOKING. */
-  async notifyClubStaff(clubId: string, branchId: string | null, type: string, vars: Record<string, string | number>, data: Record<string, unknown> = {}) {
+  async notifyClubStaff(clubId: string, branchId: string | null, type: string, vars: Record<string, string | number>, data: Record<string, unknown> = {}, opts: NotifyOptions = {}) {
     const roles = await this.prisma.user_roles.findMany({
       where: { OR: [{ club_id: clubId, branch_id: null }, ...(branchId ? [{ branch_id: branchId }] : [])], role: { code: { in: ['CLUB_OWNER', 'CLUB_ADMIN', 'BRANCH_ADMIN'] } } },
       select: { user_id: true },
     });
-    await this.notify(roles.map((r) => r.user_id), type, vars, data);
+    await this.notify(roles.map((r) => r.user_id), type, vars, data, opts);
   }
 
   async getPrefs(userId: string) {

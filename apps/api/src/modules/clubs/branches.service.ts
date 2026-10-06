@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { policyFrom } from '../../common/domain/price-engine';
 import { DEFAULT_WORKING_HOURS, openState, validateWorkingHours, WorkingHours } from '../../common/domain/working-hours';
 import { AppException } from '../../common/errors';
 import { slugify } from '../../common/utils/codes';
@@ -132,12 +133,15 @@ export class BranchesService {
     const b = await this.prisma.branches.findFirst({
       where: { ...(isId ? { id: idOrSlug } : { slug: idOrSlug }), deleted_at: null, status: 'ACTIVE', club: { status: 'ACTIVE', deleted_at: null } },
       include: {
-        club: { select: PUBLIC_CLUB_SELECT },
+        club: { select: { ...PUBLIC_CLUB_SELECT, cancellation_policy: true, settings: true, transfer_card_number: true } },
         rooms: { where: { deleted_at: null, status: 'ACTIVE' }, orderBy: { position: 'asc' }, select: { id: true, name: true, type: true, capacity: true, description: true } },
         exceptions: { where: { date: { gte: new Date(Date.now() - 86400_000) } }, orderBy: { date: 'asc' } },
       },
     });
     if (!b) throw new AppException('NOT_FOUND', 'Branch not found');
+    // Karta raqami ommaviy sahifada ko'rinmaydi — faqat "kartaga o'tkazma mumkin" belgisi
+    const { transfer_card_number, settings, cancellation_policy, ...club } = b.club;
+    const payment_options = { card_transfer: !!transfer_card_number, pay_at_club: (settings as { allow_pay_at_club?: boolean } | null)?.allow_pay_at_club !== false };
     const [devices, categories, minTariff] = await Promise.all([
       this.prisma.devices.groupBy({ by: ['type'], where: { branch_id: b.id, deleted_at: null, operational_status: 'ACTIVE' }, _count: true }),
       this.prisma.device_categories.findMany({ where: { club_id: b.club_id, deleted_at: null, OR: [{ branch_id: null }, { branch_id: b.id }] }, orderBy: { position: 'asc' } }),
@@ -145,6 +149,9 @@ export class BranchesService {
     ]);
     return {
       ...b,
+      club,
+      cancellation_policy: policyFrom(cancellation_policy),
+      payment_options,
       booking_settings: bookingSettings(b),
       ...openState(b.working_hours as WorkingHours, b.exceptions, b.timezone),
       device_types: devices.map((d) => ({ type: d.type, count: d._count })),

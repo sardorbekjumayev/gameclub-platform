@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BranchPicker } from "@/components/club-tabs";
 import { DevicePanel, Modal, WalkInForm, isShiftRequired, remainingNow } from "@/components/live/device-panel";
 import { QrScanner } from "@/components/live/qr-scanner";
+import { TransferInbox } from "@/components/payments/transfer-inbox";
 import { ShiftPanel } from "@/components/live/shift-panel";
 import { fmtClock, fmtTime } from "@/components/live/time";
 import { Empty, LoadState } from "@/components/status";
@@ -92,8 +93,11 @@ function Board({ branchId }: { branchId: string }) {
   }
 
   const { reload, setData } = live;
+  // O'tkazmalar ro'yxati ham har live event'da yangilanadi
+  const [inboxKey, setInboxKey] = useState(0);
   const refresh = useCallback(() => {
     session.get<LiveSnapshot>(`/branches/${branchId}/live`).then((r) => setData(r.data), () => undefined);
+    setInboxKey((k) => k + 1);
   }, [branchId, setData]);
   const status = useLiveBranch(branchId, refresh);
 
@@ -152,6 +156,7 @@ function Board({ branchId }: { branchId: string }) {
 
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
       <LoadState loading={live.loading && !d} error={live.error} onRetry={reload} />
+      <TransferInbox branchId={branchId} refreshKey={inboxKey} compact />
 
       {d && (
         <>

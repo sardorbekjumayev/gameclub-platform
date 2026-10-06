@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
-import { CancellationPolicy, DEFAULT_CANCELLATION_POLICY, refundPercent } from '../../common/domain/price-engine';
+import { CancellationPolicy, policyFrom, refundPercent } from '../../common/domain/price-engine';
 import { bestGroup } from '../../common/domain/seat-groups';
 import { isWithinHours, openIntervals, WorkingHours } from '../../common/domain/working-hours';
 import { AppException } from '../../common/errors';
@@ -34,6 +34,12 @@ export interface Caller {
 
 export type BranchCtx = Awaited<ReturnType<BookingsService['branchCtx']>>;
 
+/** Bron yaratilgan paytdagi siyosat (price_snapshot) — klub keyin o'zgartirsa ham mijozga ko'rsatilgani amal qiladi. */
+function bookingPolicy(b: { price_snapshot: Prisma.JsonValue | null }, current: CancellationPolicy): CancellationPolicy {
+  const snap = (b.price_snapshot as { cancellation_policy?: CancellationPolicy } | null)?.cancellation_policy;
+  return snap?.rules ? snap : current;
+}
+
 @Injectable()
 export class BookingsService {
   private readonly log = new Logger(BookingsService.name);
@@ -61,7 +67,7 @@ export class BookingsService {
     }
     const exceptions = await this.prisma.branch_hours_exceptions.findMany({ where: { branch_id: branchId, date: { gte: new Date(Date.now() - 2 * 86400_000) } } });
     const settings = bookingSettings(branch);
-    const policy = { ...DEFAULT_CANCELLATION_POLICY, ...((branch.club.cancellation_policy as object) ?? {}) } as CancellationPolicy;
+    const policy = policyFrom(branch.club.cancellation_policy);
     const clubSettings = (branch.club.settings ?? {}) as { allow_pay_at_club?: boolean };
     return { branch, club: branch.club, exceptions, settings, policy, allowPayAtClub: clubSettings.allow_pay_at_club !== false };
   }
@@ -339,7 +345,11 @@ export class BookingsService {
               payment_status: total === 0n ? 'PAID' : 'UNPAID', promotion_id: promo?.promotion_id,
               hold_expires_at: status === 'PENDING_PAYMENT' ? new Date(Date.now() + ctx.settings.hold_minutes * 60_000) : null,
               notes: dto.notes, idempotency_key: idempotencyKey ?? null,
-              price_snapshot: { promo: promo ? { code: promo.code, discount: Number(discount), funded_by: promo.funded_by } : null, payment_mode: payLater ? 'AT_CLUB' : 'ONLINE' },
+              price_snapshot: {
+                promo: promo ? { code: promo.code, discount: Number(discount), funded_by: promo.funded_by } : null,
+                payment_mode: payLater ? 'AT_CLUB' : 'ONLINE',
+                cancellation_policy: ctx.policy as unknown as Prisma.InputJsonValue,
+              },
             },
           });
           await tx.booking_items.createMany({
@@ -386,25 +396,40 @@ export class BookingsService {
   async detail(id: string) {
     const b = await this.prisma.bookings.findUnique({ where: { id }, include: { items: { orderBy: { created_at: 'asc' } } } });
     if (!b) throw new AppException('NOT_FOUND', 'Booking not found');
-    const [branch, devices, payments, session, review] = await Promise.all([
+    const [branch, clubPay, devices, payments, session, review] = await Promise.all([
       this.prisma.branches.findUnique({ where: { id: b.branch_id }, select: { id: true, name: true, slug: true, address: true, latitude: true, longitude: true, timezone: true, phone: true, booking_settings: true, club: { select: { id: true, name: true, slug: true, logo_url: true, phone: true } } } }),
+      this.prisma.clubs.findUnique({ where: { id: b.club_id }, select: { cancellation_policy: true, transfer_card_number: true, transfer_card_holder: true } }),
       this.prisma.devices.findMany({ where: { id: { in: b.items.map((i) => i.device_id) } }, select: { id: true, name: true, type: true, room: { select: { name: true } } } }),
-      this.prisma.payments.findMany({ where: { booking_id: id }, orderBy: { created_at: 'asc' }, select: { id: true, amount: true, method: true, provider: true, status: true, paid_at: true, refunded_amount: true, created_at: true } }),
+      this.prisma.payments.findMany({ where: { booking_id: id }, orderBy: { created_at: 'asc' }, select: { id: true, amount: true, method: true, provider: true, provider_payload: true, status: true, paid_at: true, refunded_amount: true, failed_reason: true, created_at: true } }),
       this.prisma.sessions.findFirst({ where: { booking_id: id }, orderBy: { created_at: 'desc' } }),
       this.prisma.reviews.findUnique({ where: { booking_id: id }, select: { id: true, rating: true, text: true, reply_text: true, replied_at: true, status: true, created_at: true } }),
     ]);
     const byId = new Map(devices.map((d) => [d.id, d]));
     const s = branch ? bookingSettings(branch) : null;
+    const amountDue = b.total_amount - b.paid_amount > 0n && !['CANCELLED', 'EXPIRED'].includes(b.status) ? b.total_amount - b.paid_amount : 0n;
+    const policy = bookingPolicy(b, policyFrom(clubPay?.cancellation_policy));
+    const cancellable = ['PENDING_PAYMENT', 'CONFIRMED'].includes(b.status);
+    const percentNow = cancellable ? refundPercent(policy, b.start_at, new Date()) : null;
+    // Kartaga o'tkazma: karta faqat to'lanmagan bron uchun ko'rsatiladi
+    const pendingTransfer = payments.find((p) => p.method === 'CARD_TRANSFER' && p.status === 'PROCESSING') ?? null;
+    const lastRejected = [...payments].reverse().find((p) => p.method === 'CARD_TRANSFER' && p.status === 'FAILED') ?? null;
+    const transfer = amountDue > 0n && clubPay?.transfer_card_number && b.customer_id && ['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'ACTIVE'].includes(b.status)
+      ? { card_number: clubPay.transfer_card_number, card_holder: clubPay.transfer_card_holder, amount: amountDue, pending: pendingTransfer, rejected: pendingTransfer ? null : lastRejected }
+      : null;
     return {
       ...b,
-      amount_due: b.total_amount - b.paid_amount > 0n && !['CANCELLED', 'EXPIRED'].includes(b.status) ? b.total_amount - b.paid_amount : 0n,
+      amount_due: amountDue,
       branch,
       club: branch?.club,
+      cancellation_policy: policy,
+      refund_preview: percentNow === null ? null : { percent: percentNow, amount: (b.paid_amount * BigInt(percentNow)) / 100n },
+      transfer,
       items: b.items.map((i) => ({ ...i, device: byId.get(i.device_id) ?? null })),
       payments,
       session,
       review: review ? { ...review, can_edit: Date.now() - review.created_at.getTime() <= 24 * 3600_000 } : null,
-      can_cancel: ['PENDING_PAYMENT', 'CONFIRMED'].includes(b.status),
+      // O'tkazma tekshirilayotganda mijoz bekor qila olmaydi (pul yo'lda — avval klub tasdiqlaydi yoki rad etadi)
+      can_cancel: cancellable && !pendingTransfer,
       can_reschedule: ['PENDING_PAYMENT', 'CONFIRMED'].includes(b.status) && b.reschedule_count < 2 && b.start_at.getTime() - Date.now() >= 60 * 60_000,
       can_review: b.status === 'COMPLETED' && !review,
       checkin_window: s ? { from: new Date(b.start_at.getTime() - s.early_checkin_minutes * 60_000).toISOString(), to: new Date(b.start_at.getTime() + s.grace_minutes * 60_000).toISOString() } : null,
@@ -502,9 +527,13 @@ export class BookingsService {
     const { booking: b, staff } = await this.loadFor(id, caller, 'bookings.cancel');
     const allowed = staff ? ['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN'] : ['PENDING_PAYMENT', 'CONFIRMED'];
     if (!allowed.includes(b.status)) throw new AppException('BOOKING_NOT_CANCELLABLE', `Cannot cancel a ${b.status} booking`);
+    if (!staff && (await this.prisma.payments.count({ where: { booking_id: id, method: 'CARD_TRANSFER', status: 'PROCESSING' } }))) {
+      throw new AppException('BOOKING_NOT_CANCELLABLE', 'Transfer is awaiting club confirmation', { reason: 'TRANSFER_PENDING' });
+    }
     const ctx = await this.branchCtx(b.branch_id, { requireActive: false });
     // Xodim bekor qilsa — to'liq qaytariladi; mijoz — cancellation_policy bo'yicha
-    const percent = staff && b.customer_id !== caller.id ? 100 : refundPercent(ctx.policy, b.start_at, new Date());
+    const policy = bookingPolicy(b, ctx.policy);
+    const percent = staff && b.customer_id !== caller.id ? 100 : refundPercent(policy, b.start_at, new Date());
     const refundable = (b.paid_amount * BigInt(percent)) / 100n;
     const result = await this.prisma.$transaction(async (tx) => {
       const fresh = await tx.bookings.findUniqueOrThrow({ where: { id } });
@@ -512,7 +541,7 @@ export class BookingsService {
       await tx.bookings.update({ where: { id }, data: { status: 'CANCELLED', cancelled_at: new Date(), cancelled_by: caller.id, cancellation_reason: reason, hold_expires_at: null } });
       await tx.booking_items.updateMany({ where: { booking_id: id }, data: { active: false } });
       await this.releasePromo(tx, id, b.promotion_id);
-      const refunded = await this.finance.refundBooking(tx, id, refundable, reason ?? 'Booking cancelled', caller.id, { percent, policy: ctx.policy });
+      const refunded = await this.finance.refundBooking(tx, id, refundable, reason ?? 'Booking cancelled', caller.id, { percent, policy });
       await tx.booking_events.create({ data: { id: uuidv7(), booking_id: id, type: 'CANCELLED', actor_id: caller.id, data: { reason, refund_percent: percent, refunded: Number(refunded) } } });
       if (staff) await this.audit.log({ actor_id: caller.id, club_id: b.club_id, action: 'booking.cancel', target_type: 'booking', target_id: id, new_value: { reason, refunded: Number(refunded) } }, tx);
       return refunded;
@@ -587,11 +616,13 @@ export class BookingsService {
     return d;
   }
 
-  async markNoShow(tx: Tx, b: { id: string; customer_id: string | null; paid_amount: bigint; promotion_id: string | null; code: string }, policy: CancellationPolicy, actorId: string | null) {
+  async markNoShow(tx: Tx, b: { id: string; customer_id: string | null; paid_amount: bigint; promotion_id: string | null; code: string; price_snapshot: Prisma.JsonValue | null }, current: CancellationPolicy, actorId: string | null) {
     await tx.bookings.update({ where: { id: b.id }, data: { status: 'NO_SHOW', no_show_marked_at: new Date() } });
     await tx.booking_items.updateMany({ where: { booking_id: b.id }, data: { active: false } });
-    const refund = (b.paid_amount * BigInt(policy.no_show_refund_percent ?? 0)) / 100n;
-    if (refund > 0n) await this.finance.refundBooking(tx, b.id, refund, 'No-show refund', actorId);
+    const policy = bookingPolicy(b, current);
+    const percent = policy.no_show_refund_percent ?? 0;
+    const refund = (b.paid_amount * BigInt(percent)) / 100n;
+    if (refund > 0n) await this.finance.refundBooking(tx, b.id, refund, 'No-show refund', actorId, { percent, policy });
     await tx.booking_events.create({ data: { id: uuidv7(), booking_id: b.id, type: 'NO_SHOW', actor_id: actorId } });
     if (b.customer_id) {
       const limit = (await this.settings.get<number>('booking.no_show_limit')) ?? 3;

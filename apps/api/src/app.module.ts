@@ -18,6 +18,7 @@ import { BookingsModule } from './modules/bookings/bookings.module';
 import { DevicesModule } from './modules/devices/devices.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
+import { RentalsModule } from './modules/rentals/rentals.module';
 import { DiscoveryModule } from './modules/discovery/discovery.module';
 import { EngagementModule } from './modules/engagement/engagement.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
@@ -25,6 +26,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { PlansModule } from './modules/plans/plans.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
+import { TelegramBotModule } from './modules/telegram/bot/telegram-bot.module';
 import { CoreServicesModule } from './modules/notifications/notifications.module';
 
 @Module({
@@ -67,8 +69,10 @@ import { CoreServicesModule } from './modules/notifications/notifications.module
     BookingsModule,
     DevicesModule,
     SessionsModule,
+    RentalsModule,
     EngagementModule,
     AnalyticsModule,
+    TelegramBotModule,
     HealthModule,
   ],
   providers: [

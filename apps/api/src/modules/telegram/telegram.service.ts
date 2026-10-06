@@ -3,16 +3,19 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { REDIS } from '../../infra/redis/redis.module';
 
-export type TgUser = { id: number; username?: string; first_name?: string };
+export type TgUser = { id: number; username?: string; first_name?: string; language_code?: string };
 export type TgMessage = {
   message_id: number;
   from?: TgUser;
   chat: { id: number; type: string };
   text?: string;
   contact?: { phone_number: string; user_id?: number; first_name?: string };
+  reply_to_message?: { message_id: number };
 };
-export type TgUpdate = { update_id: number; message?: TgMessage };
+export type TgCallback = { id: string; from: TgUser; message?: { message_id: number; chat: { id: number; type: string } }; data?: string };
+export type TgUpdate = { update_id: number; message?: TgMessage; callback_query?: TgCallback };
 type Handler = (u: TgUpdate) => Promise<void>;
+type LinkedHandler = (chatId: number) => Promise<void>;
 
 export class TelegramApiError extends Error {
   constructor(
@@ -36,6 +39,7 @@ const OFFSET_KEY = 'tg:poller:offset';
 export class TelegramService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger('Telegram');
   private handlers: Handler[] = [];
+  private linkedHandlers: LinkedHandler[] = [];
   private stopped = false;
   private botUsername: string | null = null;
   private readonly instanceId = Math.random().toString(36).slice(2);
@@ -58,6 +62,15 @@ export class TelegramService implements OnApplicationBootstrap, OnApplicationShu
     this.handlers.push(h);
   }
 
+  /** Raqam botga bog'langanda (OTP oqimi) — bot menyusini ko'rsatish uchun. */
+  onLinked(h: LinkedHandler) {
+    this.linkedHandlers.push(h);
+  }
+
+  async linked(chatId: number) {
+    for (const h of this.linkedHandlers) await h(chatId).catch((e) => this.logger.warn(`linked handler failed: ${(e as Error).message}`));
+  }
+
   async call<T>(method: string, body: Record<string, unknown> = {}): Promise<T> {
     if (!this.token) throw new TelegramApiError(0, 'Telegram bot is not configured');
     const res = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
@@ -72,7 +85,32 @@ export class TelegramService implements OnApplicationBootstrap, OnApplicationShu
   }
 
   sendMessage(chatId: number | bigint, text: string, extra: Record<string, unknown> = {}) {
-    return this.call('sendMessage', { chat_id: Number(chatId), text, parse_mode: 'HTML', ...extra });
+    return this.call('sendMessage', { chat_id: Number(chatId), text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, ...extra });
+  }
+
+  editMessage(chatId: number, messageId: number, text: string, extra: Record<string, unknown> = {}) {
+    return this.call('editMessageText', { chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, ...extra }).catch((e) => {
+      // Matn o'zgarmagan bo'lsa Telegram 400 qaytaradi — e'tiborsiz
+      if (!(e instanceof TelegramApiError && /not modified/i.test(e.message))) throw e;
+    });
+  }
+
+  answerCallback(id: string, text?: string, alert = false) {
+    return this.call('answerCallbackQuery', { callback_query_id: id, ...(text ? { text, show_alert: alert } : {}) }).catch(() => undefined);
+  }
+
+  /** PNG rasm (masalan chipta QR'i) — multipart/form-data. */
+  async sendPhoto(chatId: number, png: Buffer, caption: string, extra: Record<string, unknown> = {}) {
+    if (!this.token) throw new TelegramApiError(0, 'Telegram bot is not configured');
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    form.append('caption', caption);
+    form.append('parse_mode', 'HTML');
+    for (const [k, v] of Object.entries(extra)) form.append(k, typeof v === 'string' ? v : JSON.stringify(v));
+    form.append('photo', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'ticket.png');
+    const res = await fetch(`https://api.telegram.org/bot${this.token}/sendPhoto`, { method: 'POST', body: form, signal: AbortSignal.timeout(20_000) });
+    const json = (await res.json().catch(() => null)) as { ok: boolean; description?: string; error_code?: number } | null;
+    if (!json?.ok) throw new TelegramApiError(json?.error_code ?? res.status, json?.description ?? res.statusText);
   }
 
   async username() {
@@ -108,7 +146,7 @@ export class TelegramService implements OnApplicationBootstrap, OnApplicationShu
     }
     if (this.config.get('TELEGRAM_MODE') === 'webhook') {
       const url = this.config.get<string>('TELEGRAM_WEBHOOK_URL');
-      if (url) await this.call('setWebhook', { url, secret_token: this.config.get('TELEGRAM_WEBHOOK_SECRET'), allowed_updates: ['message'] }).catch((e) => this.logger.error(`setWebhook: ${e.message}`));
+      if (url) await this.call('setWebhook', { url, secret_token: this.config.get('TELEGRAM_WEBHOOK_SECRET'), allowed_updates: ['message', 'callback_query'] }).catch((e) => this.logger.error(`setWebhook: ${e.message}`));
       return;
     }
     await this.call('deleteWebhook').catch(() => undefined);
@@ -130,7 +168,7 @@ export class TelegramService implements OnApplicationBootstrap, OnApplicationShu
       await this.redis.expire(POLL_LOCK, 60);
       try {
         const offset = Number((await this.redis.get(OFFSET_KEY)) ?? 0);
-        const updates = await this.call<TgUpdate[]>('getUpdates', { offset, timeout: 25, allowed_updates: ['message'] });
+        const updates = await this.call<TgUpdate[]>('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query'] });
         for (const u of updates) {
           await this.redis.set(OFFSET_KEY, String(u.update_id + 1));
           await this.dispatch(u);

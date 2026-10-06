@@ -1,7 +1,7 @@
 "use client";
 
 import { formatMoney } from "@gc/types";
-import { Activity, BarChart3, CalendarCheck, Coins, Gauge, LayoutGrid, MapPin, Monitor, PlusCircle, Radio, Rocket, Tags, Users } from "lucide-react";
+import { Activity, BarChart3, CalendarCheck, Coins, CreditCard, Gauge, LayoutGrid, MapPin, Monitor, PlusCircle, Radio, Rocket, Tags, Users } from "lucide-react";
 import Link from "next/link";
 import { BarChart, rangeQuery, shortDate, todayLocal } from "@/components/analytics";
 import { LoadState, StatusBadge } from "@/components/status";
@@ -54,6 +54,7 @@ export function ClubDashboard() {
     { href: `${base}/devices`, icon: Monitor, title: t("club.tab.devices"), desc: t("dash.club.devices"), perm: "devices.view" },
     { href: `${base}/layout`, icon: LayoutGrid, title: t("club.tab.layout"), desc: t("dash.club.layout"), perm: "devices.view" },
     { href: `${base}/tariffs`, icon: Tags, title: t("club.tab.tariffs"), desc: t("dash.club.tariffs"), perm: "tariffs.view" },
+    { href: `${base}/payments`, icon: CreditCard, title: t("club.tab.payments"), desc: t("dash.club.payments"), perm: "settings.view" },
     { href: `${base}/staff`, icon: Users, title: t("club.tab.staff"), desc: t("dash.club.staff"), perm: "staff.view" },
     { href: `${base}/analytics`, icon: BarChart3, title: t("club.tab.analytics"), desc: t("dash.club.analytics"), perm: "reports.view" },
   ].filter((a) => can(a.perm));

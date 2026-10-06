@@ -61,8 +61,14 @@ class CancellationPolicyDto {
   @IsBoolean() platform_fee_refundable!: boolean;
   @IsInt() @Min(0) @Max(100) no_show_refund_percent!: number;
 }
+export class TransferCardDto {
+  @ApiProperty({ example: '8600123412341234', description: '16 raqam (bo\'shliqlarsiz)' }) @Matches(/^\d{16}$/) number!: string;
+  @ApiProperty({ example: 'ALISHER KARIMOV' }) @IsString() @MinLength(2) @MaxLength(80) holder!: string;
+}
 export class ClubSettingsDto {
   @ApiPropertyOptional() @IsOptional() @ValidateNested() @Type(() => CancellationPolicyDto) cancellation_policy?: CancellationPolicyDto;
+  @ApiPropertyOptional({ type: TransferCardDto, nullable: true, description: 'null — kartani o\'chirish (mijozlar kartaga o\'tkaza olmaydi)' })
+  @IsOptional() @ValidateNested() @Type(() => TransferCardDto) transfer_card?: TransferCardDto | null;
   @ApiPropertyOptional() @IsOptional() @IsObject() settings?: Record<string, unknown>;
 }
 

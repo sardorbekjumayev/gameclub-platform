@@ -187,33 +187,36 @@ model idempotency_keys {
 // ---------- 3.2 Club, filial, xona ----------
 
 model clubs {
-  id                  String    @id @db.Uuid
-  owner_id            String    @db.Uuid
-  name                String
-  slug                String    @unique
-  logo_url            String? // files moduli (S3) kelguncha to'g'ridan-to'g'ri URL
-  cover_url           String?
-  description         String?
-  phone               String?
-  telegram            String?
-  instagram           String?
-  website             String?
-  rules               String?
-  amenities           String[]  @default([])
-  min_booking_minutes Int       @default(60)
-  cancellation_policy Json?
-  status              String    @default("DRAFT")
-  rejection_reason    String?
-  approved_by         String?   @db.Uuid
-  approved_at         DateTime? @db.Timestamptz
-  suspended_reason    String?
-  rating_avg          Decimal   @default(0) @db.Decimal(3, 2)
-  rating_count        Int       @default(0)
-  commission_bps      Int?
-  settings            Json?
-  created_at          DateTime  @default(now()) @db.Timestamptz
-  updated_at          DateTime  @updatedAt @db.Timestamptz
-  deleted_at          DateTime? @db.Timestamptz
+  id                   String    @id @db.Uuid
+  owner_id             String    @db.Uuid
+  name                 String
+  slug                 String    @unique
+  logo_url             String? // files moduli (S3) kelguncha to'g'ridan-to'g'ri URL
+  cover_url            String?
+  description          String?
+  phone                String?
+  telegram             String?
+  instagram            String?
+  website              String?
+  rules                String?
+  amenities            String[]  @default([])
+  min_booking_minutes  Int       @default(60)
+  cancellation_policy  Json?
+  /// Mijoz to'lovni shu kartaga o'tkazadi (CARD_TRANSFER); faqat to'lanmagan bron egasiga ko'rsatiladi
+  transfer_card_number String?
+  transfer_card_holder String?
+  status               String    @default("DRAFT")
+  rejection_reason     String?
+  approved_by          String?   @db.Uuid
+  approved_at          DateTime? @db.Timestamptz
+  suspended_reason     String?
+  rating_avg           Decimal   @default(0) @db.Decimal(3, 2)
+  rating_count         Int       @default(0)
+  commission_bps       Int?
+  settings             Json?
+  created_at           DateTime  @default(now()) @db.Timestamptz
+  updated_at           DateTime  @updatedAt @db.Timestamptz
+  deleted_at           DateTime? @db.Timestamptz
 
   branches      branches[]
   subscriptions subscriptions[]
@@ -261,9 +264,10 @@ model branches {
   deleted_at       DateTime? @db.Timestamptz
   club             clubs     @relation(fields: [club_id], references: [id])
 
-  rooms      rooms[]
-  devices    devices[]
-  exceptions branch_hours_exceptions[]
+  rooms        rooms[]
+  devices      devices[]
+  exceptions   branch_hours_exceptions[]
+  rental_items rental_items[]
 
   @@unique([club_id, slug])
   @@index([club_id])
@@ -593,12 +597,99 @@ model session_charges {
   session     sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
 }
 
+// ---------- 3.5b Konsol arendasi ----------
+
+/**
+ * Klub uyga beradigan konsol (PS5/PS4/...): soatlik va/yoki kunlik narx, bir nechta dona bo'lishi mumkin.
+ */
+model rental_items {
+  id                 String    @id @db.Uuid
+  club_id            String    @db.Uuid
+  branch_id          String    @db.Uuid
+  name               String
+  type               String // PS5 | PS4 | XBOX | NINTENDO_SWITCH | VR | OTHER
+  description        String?
+  image_url          String?
+  includes           String[]  @default([]) // komplekt: "2 ta joystick", "HDMI kabel"
+  games              String[]  @default([])
+  quantity           Int       @default(1)
+  price_per_hour     BigInt?
+  price_per_day      BigInt?
+  min_hours          Int       @default(1)
+  max_days           Int       @default(30)
+  deposit_amount     BigInt    @default(0) // garov (dona uchun) — topshirishda olinadi, qaytarishda beriladi
+  delivery_available Boolean   @default(false)
+  delivery_fee       BigInt    @default(0)
+  requirements       String? // masalan "Pasport talab qilinadi"
+  status             String    @default("ACTIVE")
+  position           Int       @default(0)
+  created_at         DateTime  @default(now()) @db.Timestamptz
+  updated_at         DateTime  @updatedAt @db.Timestamptz
+  deleted_at         DateTime? @db.Timestamptz
+  branch             branches  @relation(fields: [branch_id], references: [id])
+  rentals            rentals[]
+
+  @@index([branch_id])
+  @@index([club_id])
+}
+
+/**
+ * Arenda buyurtmasi: REQUESTED → CONFIRMED → ACTIVE (topshirildi) → RETURNED.
+ */
+model rentals {
+  id                  String       @id @db.Uuid
+  code                String       @unique
+  item_id             String       @db.Uuid
+  club_id             String       @db.Uuid
+  branch_id           String       @db.Uuid
+  customer_id         String       @db.Uuid
+  contact_phone       String?
+  quantity            Int          @default(1)
+  rate_unit           String // HOUR | DAY
+  units               Int
+  start_at            DateTime     @db.Timestamptz
+  end_at              DateTime     @db.Timestamptz
+  unit_price          BigInt
+  subtotal_amount     BigInt
+  delivery_fee_amount BigInt       @default(0)
+  late_fee_amount     BigInt       @default(0)
+  total_amount        BigInt
+  deposit_amount      BigInt       @default(0)
+  deposit_status      String       @default("NONE") // NONE | HELD | RETURNED | KEPT
+  paid_amount         BigInt       @default(0)
+  payment_status      String       @default("UNPAID")
+  status              String
+  fulfillment         String       @default("PICKUP") // PICKUP | DELIVERY
+  delivery_address    String?
+  notes               String?
+  item_snapshot       Json
+  idempotency_key     String?
+  confirmed_at        DateTime?    @db.Timestamptz
+  confirmed_by        String?      @db.Uuid
+  handed_over_at      DateTime?    @db.Timestamptz
+  handed_over_by      String?      @db.Uuid
+  returned_at         DateTime?    @db.Timestamptz
+  returned_by         String?      @db.Uuid
+  cancelled_at        DateTime?    @db.Timestamptz
+  cancelled_by        String?      @db.Uuid
+  cancel_reason       String?
+  created_at          DateTime     @default(now()) @db.Timestamptz
+  updated_at          DateTime     @updatedAt @db.Timestamptz
+  item                rental_items @relation(fields: [item_id], references: [id])
+
+  @@unique([customer_id, idempotency_key])
+  @@index([item_id, start_at])
+  @@index([branch_id, status, start_at])
+  @@index([customer_id, created_at(sort: Desc)])
+}
+
 // ---------- 3.6 To'lov va moliya ----------
 
 model payments {
   id                      String    @id @db.Uuid
   booking_id              String?   @db.Uuid
   session_id              String?   @db.Uuid
+  rental_id               String?   @db.Uuid
   user_id                 String?   @db.Uuid
   club_id                 String    @db.Uuid
   branch_id               String?   @db.Uuid
@@ -623,6 +714,7 @@ model payments {
 
   @@index([club_id, paid_at])
   @@index([booking_id])
+  @@index([rental_id])
 }
 
 model payment_events {
@@ -833,14 +925,14 @@ model platform_settings {
 
 /// Telegram orqali OTP (login kodi botga yuboriladi). Telefon Telegram "kontakt ulashish" bilan tasdiqlanadi.
 model telegram_links {
-  id           String   @id @db.Uuid
-  phone        String   @unique
-  chat_id      BigInt   @unique
-  tg_user_id   BigInt
-  username     String?
-  first_name   String?
-  linked_at    DateTime @default(now()) @db.Timestamptz
-  updated_at   DateTime @updatedAt @db.Timestamptz
+  id         String   @id @db.Uuid
+  phone      String   @unique
+  chat_id    BigInt   @unique
+  tg_user_id BigInt
+  username   String?
+  first_name String?
+  linked_at  DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
 }
 
 model daily_branch_stats {

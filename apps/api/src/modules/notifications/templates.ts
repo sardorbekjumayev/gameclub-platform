@@ -9,9 +9,9 @@ export const TEMPLATES: Record<string, T> = {
     en: ['Booking created', '{code}: {club} — {when}. Complete payment within {minutes} min.'],
   },
   BOOKING_CONFIRMED: {
-    uz: ['Bron tasdiqlandi', '{code}: {club} — {when}. Klubga kelganda QR kodni ko\'rsating.'],
-    ru: ['Бронь подтверждена', '{code}: {club} — {when}. Покажите QR-код в клубе.'],
-    en: ['Booking confirmed', '{code}: {club} — {when}. Show the QR code at the club.'],
+    uz: ['Bron tasdiqlandi', '{code}: {club} — {when}. Klubga kelganda chiptani ko\'rsating.'],
+    ru: ['Бронь подтверждена', '{code}: {club} — {when}. Покажите билет в клубе.'],
+    en: ['Booking confirmed', '{code}: {club} — {when}. Show your ticket at the club.'],
   },
   BOOKING_CANCELLED: {
     uz: ['Bron bekor qilindi', '{code} bekor qilindi. Qaytariladigan summa: {refund}.'],
@@ -37,6 +37,21 @@ export const TEMPLATES: Record<string, T> = {
     uz: ['To\'lov amalga oshmadi', '{code} uchun to\'lov o\'tmadi. Qayta urinib ko\'ring.'],
     ru: ['Оплата не прошла', 'Оплата для {code} не прошла. Попробуйте снова.'],
     en: ['Payment failed', 'Payment for {code} failed. Please try again.'],
+  },
+  TRANSFER_PENDING: {
+    uz: ['Kartaga o\'tkazmani tekshiring', '{code}: {payer} (karta …{last4}) {amount} o\'tkazganini bildirdi. Tasdiqlang yoki rad eting.'],
+    ru: ['Проверьте перевод на карту', '{code}: {payer} (карта …{last4}) сообщил о переводе {amount}. Подтвердите или отклоните.'],
+    en: ['Check the card transfer', '{code}: {payer} (card …{last4}) reports a transfer of {amount}. Confirm or reject it.'],
+  },
+  TRANSFER_REJECTED: {
+    uz: ['O\'tkazma tasdiqlanmadi', '{code}: klub o\'tkazmangizni topmadi — {reason}. Qayta tekshirib yuboring.'],
+    ru: ['Перевод не подтверждён', '{code}: клуб не нашёл ваш перевод — {reason}. Проверьте и отправьте снова.'],
+    en: ['Transfer not confirmed', '{code}: the club could not find your transfer — {reason}. Please check and resubmit.'],
+  },
+  REFUND_PENDING: {
+    uz: ['Pul qaytariladi', '{code}: {amount} klub tomonidan kartangizga qaytariladi.'],
+    ru: ['Деньги будут возвращены', '{code}: клуб вернёт {amount} на вашу карту.'],
+    en: ['Refund on the way', '{code}: the club will return {amount} to your card.'],
   },
   REFUND_COMPLETED: {
     uz: ['Pul qaytarildi', '{amount} qaytarildi ({code}).'],
@@ -87,6 +102,61 @@ export const TEMPLATES: Record<string, T> = {
     uz: ['Kassa farqi', '{branch}: smena yopildi, farq {amount}.'],
     ru: ['Расхождение в кассе', '{branch}: смена закрыта, расхождение {amount}.'],
     en: ['Cash difference', '{branch}: shift closed with difference {amount}.'],
+  },
+  RENTAL_REQUESTED: {
+    uz: ['Arenda so\'rovi yuborildi', '{code}: {item} — {when}. Klub tasdiqlashini kuting.'],
+    ru: ['Заявка на аренду отправлена', '{code}: {item} — {when}. Ожидайте подтверждения клуба.'],
+    en: ['Rental request sent', '{code}: {item} — {when}. Waiting for the club to confirm.'],
+  },
+  NEW_RENTAL: {
+    uz: ['Yangi arenda so\'rovi', '{code}: {item} × {qty}, {when} ({fulfillment}). Tasdiqlang yoki rad eting.'],
+    ru: ['Новая заявка на аренду', '{code}: {item} × {qty}, {when} ({fulfillment}). Подтвердите или отклоните.'],
+    en: ['New rental request', '{code}: {item} × {qty}, {when} ({fulfillment}). Confirm or reject it.'],
+  },
+  RENTAL_CONFIRMED: {
+    uz: ['Arenda tasdiqlandi', '{code}: {item} — {when}. {club} sizni kutadi.'],
+    ru: ['Аренда подтверждена', '{code}: {item} — {when}. {club} ждёт вас.'],
+    en: ['Rental confirmed', '{code}: {item} — {when}. {club} is expecting you.'],
+  },
+  RENTAL_REJECTED: {
+    uz: ['Arenda rad etildi', '{code}: klub so\'rovni rad etdi — {reason}.'],
+    ru: ['Аренда отклонена', '{code}: клуб отклонил заявку — {reason}.'],
+    en: ['Rental rejected', '{code}: the club rejected the request — {reason}.'],
+  },
+  RENTAL_CANCELLED: {
+    uz: ['Arenda bekor qilindi', '{code}: {item} arendasi bekor qilindi.'],
+    ru: ['Аренда отменена', '{code}: аренда {item} отменена.'],
+    en: ['Rental cancelled', '{code}: the {item} rental was cancelled.'],
+  },
+  RENTAL_HANDED_OVER: {
+    uz: ['Konsol topshirildi', '{code}: {item}. Qaytarish vaqti — {until}. Yaxshi o\'yin!'],
+    ru: ['Консоль выдана', '{code}: {item}. Вернуть до {until}. Приятной игры!'],
+    en: ['Console handed over', '{code}: {item}. Return by {until}. Have fun!'],
+  },
+  RENTAL_RETURNED: {
+    uz: ['Arenda yakunlandi', '{code}: {item} qaytarildi. Rahmat!'],
+    ru: ['Аренда завершена', '{code}: {item} возвращена. Спасибо!'],
+    en: ['Rental completed', '{code}: {item} returned. Thank you!'],
+  },
+  RENTAL_EXPIRED: {
+    uz: ['Arenda muddati o\'tdi', '{code}: so\'rov o\'z vaqtida tasdiqlanmadi yoki konsol olib ketilmadi.'],
+    ru: ['Аренда истекла', '{code}: заявка не была вовремя подтверждена или консоль не забрали.'],
+    en: ['Rental expired', '{code}: the request was not confirmed in time or the console was not picked up.'],
+  },
+  RENTAL_ENDING_SOON: {
+    uz: ['Arenda tugashiga oz qoldi', '{code}: {item} ni {until} gacha qaytaring.'],
+    ru: ['Аренда скоро закончится', '{code}: верните {item} до {until}.'],
+    en: ['Rental ending soon', '{code}: please return {item} by {until}.'],
+  },
+  RENTAL_OVERDUE: {
+    uz: ['Qaytarish vaqti o\'tdi', '{code}: {item} {until} da qaytarilishi kerak edi. Kechikish uchun qo\'shimcha haq olinishi mumkin.'],
+    ru: ['Срок возврата истёк', '{code}: {item} нужно было вернуть в {until}. За просрочку может взиматься доплата.'],
+    en: ['Return overdue', '{code}: {item} was due back at {until}. A late fee may apply.'],
+  },
+  RENTAL_OVERDUE_STAFF: {
+    uz: ['Konsol qaytarilmadi', '{code}: {item} {until} da qaytarilishi kerak edi.'],
+    ru: ['Консоль не возвращена', '{code}: {item} должна была вернуться в {until}.'],
+    en: ['Console not returned', '{code}: {item} was due back at {until}.'],
   },
   BOOKING_REMINDER: {
     uz: ['Bron eslatmasi', '{code}: {club} — {when} ({minutes} daqiqadan keyin).'],

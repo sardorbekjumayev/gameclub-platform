@@ -273,6 +273,11 @@ GET  /payments/:id                   [C | payments.view]
 GET  /payments                       [payments.view] filtrlar + eksport
 POST /payments/cash                  [payments.create] operator: {booking_id|session_id, method: CASH|TERMINAL, amount}  → smena talab qilinadi
 POST /payments/:id/refund            [payments.refund] {amount?, reason}
+POST /payments/transfer              [C] {booking_id, payer_name, payer_card_last4}  → CARD_TRANSFER, PROCESSING (klub tasdiqlaydi)
+POST /payments/:id/transfer/confirm  [payments.create]  → PAID, bron CONFIRMED
+POST /payments/:id/transfer/reject   [payments.create] {reason}  → FAILED, mijozga xabar
+GET  /refunds                        [payments.refund] ?status=PENDING&club_id|branch_id  (mijoz telefoni, to'lov kartasi oxiri)
+POST /refunds/:id/complete           [payments.refund] {reference?}  → COMPLETED (klub pulni qo'lda qaytardi)
 POST /webhooks/payments/:provider    [P, imzo/basic-auth tekshiruvi]
 GET  /shifts/current                 [shifts.open]   POST /shifts/open {opening_cash}   POST /shifts/:id/close {counted_cash, note}
 GET  /shifts                         [shifts.view_all]  GET /shifts/:id/report
@@ -578,3 +583,42 @@ Migratsiya · DTO validatsiya · permission+scope · Swagger · idempotentlik (k
 - `PATCH /rooms/:id` — `decor: [{kind: ENTRANCE|CASHIER|WALL|AISLE|TV|WC, x, y}]` (sxema bezaklari).
 - Availability `rooms[].decor` va `rooms[].together["2".."5"] = { device_ids, adjacent } | null` — do'stlar uchun API tanlagan yonma-yon joylar (`common/domain/seat-groups.ts`: avval bir qatorda ketma-ket, bo'lmasa eng yaqin guruh).
 - `GET /branches/:id/live` javobida `rooms[]` (grid + decor) — operator jonli zali mijoz ko'radigan sxema bilan bir xil.
+
+## Kartaga o'tkazma, qaytarish shartlari va chipta (2026-10-02)
+**Qaror:** mijoz bron uchun pulni to'g'ridan-to'g'ri klub egasining kartasiga o'tkazadi (P2P), klub kelganini tasdiqlaydi. Pul platformadan o'tmaydi — komissiya va payout'ga kirmaydi (naqd kabi). Payme/Click/DEMO provayderlari zaxira sifatida qoladi.
+- `GET|PATCH /clubs/:id/settings` — `transfer_card: {number (16 raqam), holder} | null` (null — o'chirish). Karta audit log'ga maskalangan holda yoziladi; `GET /clubs/:id` da faqat `has_transfer_card`.
+- `GET /branches/:idOrSlug` — `cancellation_policy` va `payment_options: {card_transfer, pay_at_club}`; karta raqami ommaviy sahifada yo'q.
+- `POST /bookings` — `price_snapshot.cancellation_policy`: bron paytidagi siyosat saqlanadi; cancel va no-show refundi shu snapshot bo'yicha (klub keyin o'zgartirsa ham mijoz rozi bo'lgan shart amal qiladi).
+- `GET /bookings/:id` — `cancellation_policy` (snapshot), `refund_preview {percent, amount}` (hozir bekor qilinsa), `transfer {card_number, card_holder, amount, pending, rejected} | null` (karta faqat to'lanmagan bron egasiga).
+- O'tkazma oqimi: mijoz `POST /payments/transfer` → payment `PROCESSING`, hold `payments.transfer_confirm_minutes` (default 60) gacha uzaytiriladi, xodimlarga `TRANSFER_PENDING` + realtime `payment.transfer_pending`. Bitta bronda bitta ochiq o'tkazma (`CONFLICT reason=TRANSFER_PENDING`). Tasdiq webhook bilan bir xil yo'ldan (`handleEvent`): hold tugagan bo'lsa slot qayta band qilinadi yoki refund; bron bekor qilingan bo'lsa to'liq refund. Rad etish → `FAILED`, mijozga `TRANSFER_REJECTED`, qayta yuborish mumkin.
+- O'tkazma kutilayotganda mijoz bronni bekor qila olmaydi (`BOOKING_NOT_CANCELLABLE reason=TRANSFER_PENDING`); xodim qila oladi.
+- `CARD_TRANSFER` to'lov refundi `PENDING` yaratiladi (mijozga `REFUND_PENDING`), klub pulni qaytargach `POST /refunds/:id/complete` → `REFUND_COMPLETED`.
+- Mijoz web/mobile: bron sahifasi **chipta** ko'rinishida (klub, manzil, sana/vaqt, o'rindiqlar va narxlari, summalar, to'lov usuli, kod + kichik QR — faqat CONFIRMED/CHECKED_IN), pastida qaytarish shartlari va "hozir bekor qilsangiz" summasi. Bron vidjetida to'lovdan oldin shartlar ko'rsatiladi.
+- Admin: klub paneli `/clubs/:id/payments` (karta, klubda to'lash, siyosat muharriri + oldindan ko'rish, o'tkazmalar va qaytarishlar); operator pulti `/live` da filial bo'yicha shu inbox.
+
+### clubs.transfer_card_number / transfer_card_holder (migratsiya `20261002120000_club_transfer_card`)
+### payments.method += CARD_TRANSFER (migratsiya `20261002121000_payment_method_card_transfer`)
+
+## Telegram bot — mijoz self-service (2026-10-02)
+Bot (`@<TELEGRAM_BOT_USERNAME>`) endi faqat OTP emas: bog'langan raqam (`telegram_links.chat_id` → `users.phone`, `status=ACTIVE`) egasi botdan o'z ma'lumotlarini ko'radi. Yangi endpoint yo'q — bot `BookingsService`/`NotificationsService`/`EngagementService` ni mijoz sifatida chaqiradi (`Caller.grants = []`, `loadFor` scope tekshiruvi: boshqa mijoz broni → «topilmadi»).
+- **Kod:** `apps/api/src/modules/telegram/bot/` (`TelegramBotService`, matnlar `bot.i18n.ts` uz/ru/en — `users.language` bo'yicha). /start, kontakt va bog'lanmagan chat — `OtpService`; bog'langach (`TelegramService.onLinked`) va `/start` (nonce'siz) — salom + doimiy menyu.
+- **Menyu / buyruqlar:** 🎟 Chiptalarim `/tickets` (UPCOMING, 10 ta) · 📜 Tarix `/history` (PAST, sahifa 6) · 👤 Profilim `/profile` (ism, telefon, email, til, bronlar statistikasi, jami to'langan, no-show, `booking_blocked_until`, ⭐ sevimli klublar) · 🔔 Bildirishnomalar `/notifications` (oxirgi 8, «hammasini o'qilgan qilish») · ⚙️ Sozlamalar `/settings` (til, `telegram/reminders/announcements` prefs) · ❓ Yordam `/help`. `setMyCommands` bootstrap'da har til uchun.
+- **Chipta:** tafsilot (klub, manzil, joylar, vaqt filial TZ'da, summa/to'langan/qarz, check-in oynasi, kartaga o'tkazma rekvizitlari yoki «tekshirilmoqda», qaytarish foizi) + tugmalar: 📱 QR (`signQr` payload → PNG, `sendPhoto`, `protect_content`), ❌ Bekor qilish (tasdiqlash bosqichi → `BookingsService.cancel`, siyosat bo'yicha refund; o'tkazma tekshirilayotganda taqiqlanadi), 📍 Yandex xarita, 🌐 saytda ochish (`PUBLIC_WEB_URL` https bo'lsa).
+- **callback_data:** `tl`, `t:<id>:<back>`, `q:<id>`, `c:<id>:<back>`, `cy:<id>:<back>`, `h:<page>`, `p`, `fv`, `n`, `nr`, `s`, `sl`, `lg:<uz|ru|en>`, `st:<pref>` (`back`: `u` — faol chiptalar, raqam — tarix sahifasi). `allowed_updates: [message, callback_query]`.
+- **Bildirishnomalar:** mijoz bron turlari (BOOKING_*, PAYMENT_*, TRANSFER_REJECTED, REFUND_*, SESSION_*, NO_SHOW_WARNING) Telegram xabariga «🎟 Chiptani ko'rish» tugmasi qo'shiladi; OTP kod xabari endi menyu klaviaturasini o'chirmaydi.
+- **Cheklov:** 40 amal/daqiqa/chat (Redis `tg:bot:rl:<chat>`). Env: `PUBLIC_WEB_URL?`.
+
+## Konsol arendasi — uyga PS5/PS4/Xbox (2026-10-02)
+**Qaror:** klub o'z konsolini mijozga uyga soatlik va/yoki kunlik beradi. Bron (`bookings`) dan alohida modul (`apps/api/src/modules/rentals`): qurilma klub ichidagi o'rindiq emas, ko'chma inventar — `rental_items.quantity` dona bilan hisoblanadi. Onlayn to'lov yo'q: so'rov → klub tasdiqlaydi → topshirishda klubda to'lanadi (naqd/terminal — ochiq smena orqali, kartaga o'tkazma — operator qayd etadi) va garov olinadi.
+- **Holatlar:** `REQUESTED → CONFIRMED → ACTIVE (topshirildi) → RETURNED`; `CANCELLED` (mijoz/xodim, faqat REQUESTED/CONFIRMED), `REJECTED` (xodim, sabab bilan), `EXPIRED` (sweeper). Har o'tish tranzaksiyada `updateMany where status IN (...)` — parallel bosishda biri `CONFLICT reason=STATUS_CHANGED`.
+- **Ommaviy:** `GET /rental-items?branch_id&club_id&type&rate_unit=HOUR|DAY&delivery=true&q` (faqat faol klub/filial, `available_now`), `GET /rental-items/:id` (+ `branch.is_open/open_until`), `GET /rental-items/:id/slots?date&rate_unit&units&quantity` (30 daq qadam; olish va qaytarish paytida filial ochiq + yetarli bo'sh dona), `GET /rental-items/:id/quote?rate_unit&units&start_at&quantity&fulfillment`.
+- **Narx:** `dona narxi × units × quantity` (+ `delivery_fee` DELIVERY bo'lsa). Garov `deposit_amount × quantity` to'lov summasiga kirmaydi. Yaratishda `item_snapshot` (nom, tur, narxlar, garov) saqlanadi — kechikish haqi tavsiyasi shu bo'yicha.
+- **Mijoz:** `POST /rentals` (Idempotency-Key; `item_id, rate_unit, units, start_at, quantity?, fulfillment?, delivery_address?, contact_phone?, notes?`) → `REQUESTED`; `GET /rentals?status=OPEN|HISTORY`, `GET /rentals/:id`, `POST /rentals/:id/cancel`. Cheklovlar: `min_hours`, `max_days`, 60 kun oldindan, ochiq arenda ≤ 3, `booking_blocked_until`. Bir konsolga parallel so'rovlar `SELECT ... FOR UPDATE` (rental_items qatori) bilan navbatlanadi — dona sonidan oshmaydi (`DEVICE_NOT_AVAILABLE reason=NO_UNITS`).
+- **Xato sabablari (`details.reason`):** `MIN_HOURS`, `MAX_DAYS`, `UNIT_NOT_OFFERED`, `NO_DELIVERY`, `ADDRESS_REQUIRED`, `PICKUP_CLOSED`/`RETURN_CLOSED` (`BOOKING_OUTSIDE_WORKING_HOURS`), `NO_UNITS`, `MAX_OPEN_RENTALS` (`CONFLICT`).
+- **Klub:** `GET /branches/:id/rental-items/manage` (`rentals.view`; `available_now`, `requested_count`), `POST /branches/:id/rental-items`, `PATCH|DELETE /rental-items/:id` (`rentals.manage`; ochiq arendasi bor konsol o'chirilmaydi — `CONFLICT reason=OPEN_RENTALS`). `GET /rentals?staff=true&branch_id&status=OPEN|OVERDUE|HISTORY&q`. `POST /rentals/:id/confirm | reject {reason} | handover {payment_method: CASH|TERMINAL|CARD_TRANSFER|LATER, deposit_collected} | return {late_fee?, payment_method?, deposit: RETURNED|KEPT, note?}` (`rentals.process`, Idempotency-Key, audit). Qaytarishda qoldiq to'lanmasa yopilmaydi; garov `HELD` bo'lsa taqdiri majburiy.
+- **To'lov:** `payments.rental_id`; `FinanceService.syncRentalPayment` (`paid_amount`, `payment_status`), naqd/terminal komissiyasiz (klub kassasi). `GET /payments` da `booking_code` arenda kodi (`RN-XXXXXX`) bilan ham to'ladi.
+- **Kechikish:** `ACTIVE` va `end_at + 15 daq` o'tgan — `is_overdue`, `overdue_minutes`, `suggested_late_fee` (soatlik narx × boshlangan soatlar, bo'lmasa kunlik × kunlar, × dona).
+- **Sweeper (60 s):** tasdiqlanmagan so'rov boshlanishdan 30 daq keyin, olib ketilmagan arenda muddatning yarmi (≤ 6 soat) o'tib → `EXPIRED`; tugashiga 1 soat qolganda `RENTAL_ENDING_SOON` (reminders prefs); kechiksa mijozga `RENTAL_OVERDUE`, xodimlarga `RENTAL_OVERDUE_STAFF` (dedupe — bir marta).
+- **Bildirishnomalar:** `RENTAL_REQUESTED`, `NEW_RENTAL` (xodimlar), `RENTAL_CONFIRMED`, `RENTAL_REJECTED`, `RENTAL_CANCELLED`, `RENTAL_HANDED_OVER`, `RENTAL_RETURNED`, `RENTAL_EXPIRED`. Realtime: `rental.created`, `rental.updated` (`branch:<id>` va mijoz xonasi).
+- **Ruxsatlar:** `rentals.view`, `rentals.manage`, `rentals.process`. OPERATOR: view + process; BRANCH_ADMIN va yuqori: + manage.
+- **Klientlar:** web `/rentals` (katalog), `/rentals/:id` (konsol + so'rov formasi), `/my-rentals`, `/my-rentals/:id`; filial sahifasida "Uyga arenda" bo'limi. Mobile `features/rentals/` (xuddi shu ekranlar, bosh sahifa va filial sahifasidan kirish). Admin: klub/operator panelida `/clubs/:id/rentals` — so'rovlar (faol/kechikkan/tarix, tasdiqlash → topshirish → qaytarish) va konsollar inventari.

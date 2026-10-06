@@ -11,6 +11,7 @@ export const PERMISSIONS = [
   'tariffs.view', 'tariffs.create', 'tariffs.update', 'tariffs.delete',
   'promotions.view', 'promotions.manage',
   'bookings.view', 'bookings.create', 'bookings.cancel', 'bookings.checkin', 'bookings.reschedule',
+  'rentals.view', 'rentals.manage', 'rentals.process',
   'sessions.view', 'sessions.start', 'sessions.stop', 'sessions.pause', 'sessions.extend', 'sessions.move',
   'customers.view', 'customers.notes.manage', 'customers.block',
   'payments.view', 'payments.create', 'payments.refund',
@@ -31,11 +32,11 @@ const clubPerms = PERMISSIONS.filter((p) => !p.startsWith('platform.'));
 const OPERATOR: Permission[] = [
   'devices.view', 'devices.status.change',
   'bookings.view', 'bookings.create', 'bookings.checkin', 'bookings.cancel',
-  ...all('sessions.'),
+  ...all('sessions.'), 'rentals.view', 'rentals.process',
   'customers.view', 'payments.view', 'payments.create', 'shifts.open', 'shifts.close',
 ];
 const BRANCH_ADMIN: Permission[] = [
-  ...OPERATOR, ...all('rooms.'), ...all('devices.'), ...all('tariffs.'),
+  ...OPERATOR, ...all('rooms.'), ...all('devices.'), ...all('tariffs.'), 'rentals.manage',
   'reports.view', 'staff.view', 'promotions.view', 'branches.view', 'clubs.view',
 ];
 const CLUB_ADMIN: Permission[] = [

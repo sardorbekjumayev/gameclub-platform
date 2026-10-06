@@ -91,3 +91,36 @@ body {
   background: var(--color-on-accent);
   box-shadow: none;
 }
+
+/* Bron chiptasi: yirtiladigan chiziq va ikki chetida yarim doira "teshik" (fon rangida). */
+.gc-ticket-perf {
+  position: relative;
+  height: 0;
+  border-top: 2px dashed var(--color-line);
+  margin-left: 18px;
+  margin-right: 18px;
+}
+.gc-ticket-perf::before,
+.gc-ticket-perf::after {
+  content: "";
+  position: absolute;
+  top: -15px;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+}
+.gc-ticket-perf::before {
+  left: -32px;
+}
+.gc-ticket-perf::after {
+  right: -32px;
+}
+
+/* Muqova rasmi bo'lmagan klub kartasi: yumshoq aksent nur. */
+.gc-hero-glow {
+  background:
+    radial-gradient(520px 240px at 0% 0%, rgba(198, 255, 61, 0.14), transparent 70%),
+    radial-gradient(420px 220px at 100% 0%, rgba(120, 140, 255, 0.08), transparent 70%);
+}

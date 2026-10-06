@@ -190,3 +190,110 @@ export type PlanLimits = { branches: number | null; devices: number | null; staf
 export type Plan = { id: string; code: string; name: string; price_per_month: number; limits: PlanLimits; is_active: boolean; active_clubs?: number; is_trial_plan?: boolean };
 export type Subscription = { id: string; status: string; current_period_start: string; current_period_end: string; trial_ends_at: string | null; plan: Plan };
 export type ClubSubscription = { subscription: Subscription | null; usage: { branches: number; devices: number; staff: number } };
+
+/** Bekor qilish/kelmaslik bo'yicha qaytarish siyosati (docs/02-DATABASE.md §5 cancellation_policy). */
+export type CancellationPolicy = {
+  free_cancel_minutes_before: number;
+  rules: { min_minutes_before_start: number; refund_percent: number }[];
+  platform_fee_refundable: boolean;
+  no_show_refund_percent: number;
+};
+
+export type ClubPaymentSettings = {
+  cancellation_policy: CancellationPolicy;
+  settings: { allow_pay_at_club?: boolean } & Record<string, unknown>;
+  transfer_card: { number: string; holder: string | null } | null;
+};
+
+export type TransferPayload = { payer_name?: string; payer_card_last4?: string; card_last4?: string };
+
+export type PaymentRow = {
+  id: string;
+  booking_id: string | null;
+  booking_code: string | null;
+  club_id: string;
+  branch_id: string | null;
+  amount: number;
+  method: string;
+  provider: string | null;
+  provider_payload: TransferPayload | null;
+  status: string;
+  failed_reason: string | null;
+  created_at: string;
+};
+
+export type RefundRow = {
+  id: string;
+  amount: number;
+  status: string;
+  reason: string | null;
+  created_at: string;
+  payment: { id: string; method: string; provider: string | null; provider_payload: TransferPayload | null; branch_id: string | null } | null;
+  booking: { id: string; code: string; start_at: string } | null;
+  customer: { id: string; phone: string; first_name: string | null; last_name: string | null } | null;
+};
+
+export const RENTAL_TYPES = ["PS5", "PS4", "XBOX", "NINTENDO_SWITCH", "VR", "OTHER"] as const;
+export type RentalStatus = "REQUESTED" | "CONFIRMED" | "ACTIVE" | "RETURNED" | "CANCELLED" | "REJECTED" | "EXPIRED";
+
+export type RentalItem = {
+  id: string;
+  branch_id: string;
+  name: string;
+  type: string;
+  description: string | null;
+  image_url: string | null;
+  includes: string[];
+  games: string[];
+  quantity: number;
+  price_per_hour: number | null;
+  price_per_day: number | null;
+  min_hours: number;
+  max_days: number;
+  deposit_amount: number;
+  delivery_available: boolean;
+  delivery_fee: number;
+  requirements: string | null;
+  status: "ACTIVE" | "INACTIVE";
+  position: number;
+  out_now: number;
+  available_now: number;
+  requested_count: number;
+  open_count: number;
+};
+
+export type Rental = {
+  id: string;
+  code: string;
+  item_id: string;
+  branch_id: string;
+  status: RentalStatus;
+  quantity: number;
+  rate_unit: "HOUR" | "DAY";
+  units: number;
+  start_at: string;
+  end_at: string;
+  unit_price: number;
+  subtotal_amount: number;
+  delivery_fee_amount: number;
+  late_fee_amount: number;
+  total_amount: number;
+  paid_amount: number;
+  payment_status: string;
+  deposit_amount: number;
+  deposit_status: "NONE" | "HELD" | "RETURNED" | "KEPT";
+  fulfillment: "PICKUP" | "DELIVERY";
+  delivery_address: string | null;
+  contact_phone: string | null;
+  notes: string | null;
+  cancel_reason: string | null;
+  handed_over_at: string | null;
+  returned_at: string | null;
+  created_at: string;
+  item_snapshot: { name: string; type: string; image_url: string | null };
+  is_overdue: boolean;
+  overdue_minutes: number;
+  suggested_late_fee: number;
+  branch: { id: string; name: string; timezone: string } | null;
+  customer?: { id: string; phone: string | null; first_name: string | null; last_name: string | null } | null;
+};
