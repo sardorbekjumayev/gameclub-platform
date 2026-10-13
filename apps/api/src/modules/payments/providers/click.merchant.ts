@@ -32,7 +32,9 @@ export class ClickMerchantService {
     const id = f.merchant_trans_id ?? '';
     const p = /^[0-9a-f-]{36}$/i.test(id) ? await this.prisma.payments.findFirst({ where: { id, provider: 'CLICK' } }) : null;
     if (!p) return { err: this.reply(f, -5, 'User does not exist') };
-    if (BigInt(Math.round(parseFloat(f.amount ?? 'NaN') * 100)) !== p.amount) return { err: this.reply(f, -2, 'Incorrect parameter amount') };
+    // Summa so'mda (masalan "12000.50"); son bo'lmasa BigInt() xato tashlamasligi uchun avval tekshiriladi
+    const som = parseFloat(f.amount ?? 'NaN');
+    if (!Number.isFinite(som) || BigInt(Math.round(som * 100)) !== p.amount) return { err: this.reply(f, -2, 'Incorrect parameter amount') };
     return { p };
   }
 

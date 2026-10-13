@@ -33,6 +33,11 @@ export class MapQuery {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(22) zoom?: number;
 }
 
+export class SummaryQuery {
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsLatitude() lat?: number;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsLongitude() lng?: number;
+}
+
 interface Row {
   id: string;
   club_id: string;
@@ -140,6 +145,10 @@ export class DiscoveryService {
 
   async map(q: MapQuery) {
     const [w, s, e, n] = q.bbox.split(',').map(Number);
+    // bbox=w,s,e,n: koordinatalar chegarada va w<=e, s<=n bo'lishi shart
+    if ([w, e].some((x) => x < -180 || x > 180) || [s, n].some((y) => y < -90 || y > 90) || w > e || s > n) {
+      throw new AppException('VALIDATION_ERROR', 'Invalid bbox', { field: 'bbox' });
+    }
     const rows = await this.prisma.$queryRaw<Row[]>`${this.baseSql()} AND b.longitude BETWEEN ${w} AND ${e} AND b.latitude BETWEEN ${s} AND ${n} LIMIT 300`;
     return this.enrich(rows);
   }

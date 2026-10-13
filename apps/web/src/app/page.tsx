@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { ActiveSessions } from "@/components/active-sessions";
 import { SocialLinks, SocialPromoBanner, useSocial } from "@/components/social";
 import { type MessageKey, useI18n } from "@/i18n/provider";
@@ -36,18 +36,14 @@ const CATEGORIES = [
   { type: "RACING_SIMULATOR", icon: Car },
 ] as const;
 
-// Klub egasi paneli (admin, "club" build) manzili — env yoki joriy host:4730.
-const noop = () => () => {};
+// Klub egasi paneli manzili (masalan https://club.<domen>). Sozlanmagan bo'lsa — havola ko'rsatilmaydi.
+const CLUB_PANEL_URL = process.env.NEXT_PUBLIC_CLUB_PANEL_URL || null;
 
 export default function Home() {
   const { t, locale } = useI18n();
   const router = useRouter();
   const [q, setQ] = useState("");
-  const ownerUrl = useSyncExternalStore(
-    noop,
-    () => process.env.NEXT_PUBLIC_CLUB_PANEL_URL ?? `${window.location.protocol}//${window.location.hostname}:4730`,
-    () => null,
-  );
+  const ownerUrl = CLUB_PANEL_URL;
   const social = useSocial();
   const top = useApi<BranchCard[]>("/discovery/search?limit=6&sort=rating");
   const clubs = top.data ?? [];

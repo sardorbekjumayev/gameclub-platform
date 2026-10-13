@@ -305,7 +305,9 @@ export class SessionsService {
   async pause(id: string, caller: Caller) {
     const s = await this.load(id, caller, 'sessions.pause');
     if (s.status !== 'ACTIVE') throw new AppException('CONFLICT', `Cannot pause a ${s.status} session`);
-    await this.prisma.sessions.update({ where: { id }, data: { status: 'PAUSED', paused_at: new Date() } });
+    // Shartli yangilash: parallel so'rovda faqat bittasi pauza qiladi
+    const done = await this.prisma.sessions.updateMany({ where: { id, status: 'ACTIVE' }, data: { status: 'PAUSED', paused_at: new Date() } });
+    if (!done.count) throw new AppException('CONFLICT', 'Session state has changed');
     await this.audit.log({ actor_id: caller.id, club_id: s.club_id, action: 'session.pause', target_type: 'session', target_id: id });
     const v = await this.view(id);
     this.emitLive(v, 'session.updated');
@@ -319,11 +321,14 @@ export class SessionsService {
     const newEnd = new Date((s.expected_end_at ?? new Date()).getTime() + pausedMs);
     let extended = true;
     await this.prisma.$transaction(async (tx) => {
-      if (s.is_open) {
-        // Ochiq sessiyada tugash vaqti yo'q — faqat pauza vaqti hisobdan chiqariladi
-        await tx.sessions.update({ where: { id }, data: { status: 'ACTIVE', paused_at: null, total_paused_seconds: { increment: Math.round(pausedMs / 1000) } } });
-        return;
-      }
+      // Shartli yangilash: parallel resume pauza vaqtini ikki marta qo'shmasin
+      const done = await tx.sessions.updateMany({
+        where: { id, status: 'PAUSED', paused_at: s.paused_at },
+        data: { status: 'ACTIVE', paused_at: null, total_paused_seconds: { increment: Math.round(pausedMs / 1000) } },
+      });
+      if (!done.count) throw new AppException('CONFLICT', 'Session state has changed');
+      // Ochiq sessiyada tugash vaqti yo'q — faqat pauza vaqti hisobdan chiqariladi
+      if (s.is_open) return;
       if (s.booking_item_id) {
         try {
           await tx.$executeRaw`SAVEPOINT resume_ext`;
@@ -334,10 +339,7 @@ export class SessionsService {
           extended = false;
         }
       }
-      await tx.sessions.update({
-        where: { id },
-        data: { status: 'ACTIVE', paused_at: null, total_paused_seconds: { increment: Math.round(pausedMs / 1000) }, ...(extended ? { expected_end_at: newEnd } : {}) },
-      });
+      if (extended) await tx.sessions.update({ where: { id }, data: { expected_end_at: newEnd } });
     });
     await this.audit.log({ actor_id: caller.id, club_id: s.club_id, action: 'session.resume', target_type: 'session', target_id: id, new_value: { paused_seconds: Math.round(pausedMs / 1000), extended } });
     const v = await this.view(id);
@@ -370,8 +372,10 @@ export class SessionsService {
     const q = this.pricing.quoteDevice(await this.pricing.tariffs(s.branch_id), device, from, to, ctx.branch.timezone);
     try {
       await this.prisma.$transaction(async (tx) => {
+        // Shartli yangilash: parallel uzaytirish/yakunlashda eski holat ustidan yozmaymiz (vaqt va summa mos qoladi)
+        const done = await tx.sessions.updateMany({ where: { id, status: { in: ['ACTIVE', 'PAUSED'] }, expected_end_at: from }, data: { expected_end_at: to } });
+        if (!done.count) throw new AppException('CONFLICT', 'Session state has changed, retry');
         if (s.booking_item_id) await this.setItemEnd(tx, s.booking_item_id, s.branch_id, to);
-        await tx.sessions.update({ where: { id }, data: { expected_end_at: to } });
         if (s.booking_id) await tx.bookings.update({ where: { id: s.booking_id }, data: { end_at: to, duration_minutes: { increment: dto.minutes } } });
         await this.charge(tx, s, 'EXTENSION', dto.minutes, q.amount, caller.id, `+${dto.minutes} min`);
         if (dto.payment_method && dto.payment_method !== 'LATER' && q.amount > 0n) {
@@ -446,10 +450,12 @@ export class SessionsService {
       }
     }
     await this.prisma.$transaction(async (tx) => {
-      await tx.sessions.update({
-        where: { id },
+      // Shartli yangilash: parallel stop'da faqat bittasi yakunlaydi (overtime/event/audit bir marta)
+      const done = await tx.sessions.updateMany({
+        where: { id, status: { in: LIVE } },
         data: { status: 'COMPLETED', ended_at: now, ended_by: caller.id, end_reason: dto.reason ? 'FORCE_STOPPED' : 'COMPLETED', overtime_minutes: overtime || null, paused_at: null },
       });
+      if (!done.count) throw new AppException('CONFLICT', 'Session is already stopped');
       if (overtime) await this.charge(tx, s, 'OVERTIME', overtime, overtimeAmount, caller.id, `Overtime ${overtime} min`);
       if (s.booking_item_id) await tx.booking_items.update({ where: { id: s.booking_item_id }, data: { active: false } });
       if (s.booking_id) {

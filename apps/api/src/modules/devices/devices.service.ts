@@ -39,18 +39,22 @@ export class DevicesService {
     return d;
   }
 
-  private async assertRefs(branch: { id: string; club_id: string }, roomId?: string | null, categoryId?: string | null) {
+  private async assertRefs(branch: { id: string; club_id: string }, roomId?: string | null, categoryId?: string | null, deviceId?: string | null) {
     if (roomId && !(await this.prisma.rooms.findFirst({ where: { id: roomId, branch_id: branch.id, deleted_at: null } }))) {
       throw new AppException('VALIDATION_ERROR', 'Room does not belong to this branch', { field: 'room_id' });
     }
     if (categoryId && !(await this.prisma.device_categories.findFirst({ where: { id: categoryId, club_id: branch.club_id, deleted_at: null } }))) {
       throw new AppException('VALIDATION_ERROR', 'Category does not belong to this club', { field: 'category_id' });
     }
+    if (deviceId && !(await this.prisma.devices.findFirst({ where: { id: deviceId, branch_id: branch.id, deleted_at: null } }))) {
+      throw new AppException('VALIDATION_ERROR', 'Device does not belong to this branch', { field: 'device_id' });
+    }
   }
 
   // ---------- Kategoriyalar ----------
   async categories(branchId: string, grants: Grant[] | null) {
-    const b = grants ? await this.branches.load(branchId, grants, 'devices.view') : await this.prisma.branches.findFirstOrThrow({ where: { id: branchId } });
+    const b = grants ? await this.branches.load(branchId, grants, 'devices.view') : await this.prisma.branches.findFirst({ where: { id: branchId, deleted_at: null } });
+    if (!b) throw new AppException('NOT_FOUND', 'Branch not found');
     return this.prisma.device_categories.findMany({ where: { club_id: b.club_id, deleted_at: null, OR: [{ branch_id: null }, { branch_id: b.id }] }, orderBy: { position: 'asc' } });
   }
 
@@ -95,7 +99,7 @@ export class DevicesService {
   /** Ommaviy qisqa ro'yxat (tur, kategoriya, specs). */
   async listPublic(branchId: string) {
     return this.prisma.devices.findMany({
-      where: { branch_id: branchId, deleted_at: null, operational_status: { not: 'DISABLED' }, branch: { status: 'ACTIVE', deleted_at: null } },
+      where: { branch_id: branchId, deleted_at: null, operational_status: { not: 'DISABLED' }, branch: { status: 'ACTIVE', deleted_at: null, club: { status: 'ACTIVE', deleted_at: null } } },
       orderBy: [{ position_order: 'asc' }, { name: 'asc' }],
       select: { id: true, name: true, type: true, specs: true, room_id: true, category_id: true, layout: true, operational_status: true },
     });
@@ -145,7 +149,14 @@ export class DevicesService {
   async update(id: string, dto: UpdateDeviceDto, grants: Grant[], actor: Actor) {
     const d = await this.loadDevice(id, grants, 'devices.update');
     await this.assertRefs({ id: d.branch_id, club_id: d.club_id }, dto.room_id, dto.category_id);
-    const u = await this.prisma.devices.update({ where: { id }, data: { ...dto, specs: dto.specs as Prisma.InputJsonValue } });
+    let u;
+    try {
+      u = await this.prisma.devices.update({ where: { id }, data: { ...dto, specs: dto.specs as Prisma.InputJsonValue } });
+    } catch (e) {
+      // Nom filial ichida takrorlanmasin (devices_branch_name_uq) — 500 emas, 409
+      if ((e as { code?: string }).code === 'P2002') throw new AppException('CONFLICT', 'Device name already exists in this branch');
+      throw e;
+    }
     await this.audit.log({ actor_id: actor.id, club_id: d.club_id, action: 'device.update', target_type: 'device', target_id: id, new_value: dto, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
     return u;
   }
@@ -295,7 +306,7 @@ export class DevicesService {
 
   async createTariff(branchId: string, dto: TariffDto, grants: Grant[], actor: Actor) {
     const b = await this.branches.load(branchId, grants, 'tariffs.create');
-    await this.assertRefs(b, dto.room_id, dto.category_id);
+    await this.assertRefs(b, dto.room_id, dto.category_id, dto.device_id);
     const id = uuidv7();
     const t = await this.prisma.$transaction(async (tx) => {
       const created = await tx.tariffs.create({ data: { ...this.tariffData(dto), id, club_id: b.club_id, branch_id: b.id, name: dto.name, price_per_hour: BigInt(dto.price_per_hour) } });
@@ -311,6 +322,8 @@ export class DevicesService {
     const t = await this.prisma.tariffs.findFirst({ where: { id, deleted_at: null }, include: TARIFF_INCLUDE(false) });
     if (!t) throw new AppException('NOT_FOUND', 'Tariff not found');
     assertCan(grants, 'tariffs.update', { club_id: t.club_id, branch_id: t.branch_id });
+    // Xona/kategoriya/qurilma faqat shu filial (klub)niki bo'lishi shart
+    await this.assertRefs({ id: t.branch_id, club_id: t.club_id }, dto.room_id, dto.category_id, dto.device_id);
     await this.prisma.$transaction(async (tx) => {
       await tx.tariffs.update({ where: { id }, data: this.tariffData(dto) });
       if (dto.rules) {

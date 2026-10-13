@@ -1,7 +1,7 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor, SetMetadata, UseInterceptors, applyDecorators } from '@nestjs/common';
 import { ApiHeader } from '@nestjs/swagger';
 import { Prisma } from '@prisma/client';
-import { from, Observable, of, switchMap, tap } from 'rxjs';
+import { catchError, concatMap, from, Observable, of, switchMap, throwError } from 'rxjs';
 import { PrismaService } from '../../database/prisma.service';
 import { AppException } from '../errors';
 import { serialize } from '../serialize';
@@ -35,15 +35,27 @@ export class IdempotencyInterceptor implements NestInterceptor {
           ? this.prisma.idempotency_keys.update({ where: { id: found.id }, data: { request_hash: hash, response_body: Prisma.DbNull, expires_at: new Date(Date.now() + TTL_MS) } })
           : this.prisma.idempotency_keys.create({ data: { id: uuidv7(), key, user_id: req.user.id, route, request_hash: hash, expires_at: new Date(Date.now() + TTL_MS) } });
         return from(reserve).pipe(
+          // Bir vaqtda kelgan ikkinchi so'rov unique constraint'ga uriladi — u ham "jarayonda"
+          catchError((e) => {
+            if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new AppException('CONFLICT', 'Request with this Idempotency-Key is in progress');
+            throw e;
+          }),
           switchMap(() =>
             next.handle().pipe(
-              tap({
-                next: (body) =>
-                  void this.prisma.idempotency_keys
+              // Javob klientga ketishidan oldin saqlanadi — darhol takrorlangan so'rov oldingi javobni oladi
+              concatMap((body) =>
+                from(
+                  this.prisma.idempotency_keys
                     .update({ where: { key_user_id_route: { key, user_id: req.user.id, route } }, data: { response_status: 200, response_body: serialize(body) as Prisma.InputJsonValue } })
                     .catch(() => undefined),
-                error: () => void this.prisma.idempotency_keys.delete({ where: { key_user_id_route: { key, user_id: req.user.id, route } } }).catch(() => undefined),
-              }),
+                ).pipe(switchMap(() => of(body))),
+              ),
+              // Xatoda kalit bo'shatiladi (xato klientga ketishidan oldin) — qayta urinish mumkin bo'lsin
+              catchError((err) =>
+                from(this.prisma.idempotency_keys.delete({ where: { key_user_id_route: { key, user_id: req.user.id, route } } }).catch(() => undefined)).pipe(
+                  switchMap(() => throwError(() => err)),
+                ),
+              ),
             ),
           ),
         );

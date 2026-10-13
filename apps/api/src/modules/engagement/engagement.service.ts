@@ -416,7 +416,9 @@ export class EngagementService {
   }
 
   async deleteAnnouncement(id: string, clubId: string | null, actor: Actor) {
-    await this.prisma.announcements.deleteMany({ where: { id, club_id: clubId } });
+    // Boshqa klub (yoki platforma) e'loni — "mavjud emas"; soxta audit yozuvi ham qolmasin
+    const { count } = await this.prisma.announcements.deleteMany({ where: { id, club_id: clubId } });
+    if (!count) throw new AppException('NOT_FOUND', 'Announcement not found');
     await this.audit.log({ actor_id: actor.id, club_id: clubId, action: 'announcement.delete', target_type: 'announcement', target_id: id });
     return { deleted: true };
   }
@@ -449,6 +451,8 @@ export class EngagementService {
     if (!p) throw new AppException('NOT_FOUND', 'Promotion not found');
     if (p.club_id) assertCan(grants, 'promotions.manage', { club_id: p.club_id });
     else if (!scopeFilter(grants, 'platform.settings.manage').platform) throw new AppException('NOT_FOUND', 'Promotion not found');
+    // Yaratishdagi kabi: foizli promo 1-100 oralig'ida qolishi shart
+    if (p.type === 'PERCENT' && dto.value !== undefined && dto.value > 100) throw new AppException('VALIDATION_ERROR', 'Percent must be 1-100', { field: 'value' });
     const u = await this.prisma.promotions.update({
       where: { id },
       data: {

@@ -33,6 +33,9 @@ export const DEFAULT_BOOKING_SETTINGS = {
 export type BookingSettings = typeof DEFAULT_BOOKING_SETTINGS;
 export const bookingSettings = (b: { booking_settings: unknown }): BookingSettings => ({ ...DEFAULT_BOOKING_SETTINGS, ...((b.booking_settings as object) ?? {}) });
 
+/** DTO instansiyasidagi berilmagan (undefined) maydonlar mavjud qiymatlarni o'chirib yubormasin. */
+const definedOnly = <T extends object>(o: T | undefined) => Object.fromEntries(Object.entries(o ?? {}).filter(([, v]) => v !== undefined)) as Partial<T>;
+
 /** Bezaklarni toza JSON qilib saqlash (faqat kind/x/y). */
 const roomData = <T extends CreateRoomDto>(dto: T) => {
   const { decor, ...rest } = dto;
@@ -94,7 +97,7 @@ export class BranchesService {
         images: dto.images ?? [],
         amenities: dto.amenities ?? [],
         working_hours: wh as Prisma.InputJsonValue,
-        booking_settings: { ...DEFAULT_BOOKING_SETTINGS, ...(dto.booking_settings ?? {}) },
+        booking_settings: { ...DEFAULT_BOOKING_SETTINGS, ...definedOnly(dto.booking_settings) },
       },
     });
     await this.audit.log({ actor_id: actor.id, club_id: clubId, action: 'branch.create', target_type: 'branch', target_id: branch.id, new_value: dto, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
@@ -110,7 +113,7 @@ export class BranchesService {
       data: {
         ...rest,
         ...(working_hours ? { working_hours: working_hours as Prisma.InputJsonValue } : {}),
-        ...(booking_settings ? { booking_settings: { ...bookingSettings(old), ...booking_settings } } : {}),
+        ...(booking_settings ? { booking_settings: { ...bookingSettings(old), ...definedOnly(booking_settings) } } : {}),
       },
     });
     let warning: { future_bookings: number } | undefined;

@@ -5,7 +5,7 @@ import { Check, Copy, CreditCard } from "lucide-react";
 import { useState } from "react";
 import { Alert, Button, Field, Input, Spinner, cx } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
-import { session, useAuth } from "@/lib/session";
+import { session } from "@/lib/session";
 import type { BookingDetail } from "@/lib/types";
 import { idemKey } from "@/lib/use-api";
 
@@ -33,19 +33,16 @@ function CopyButton({ value }: { value: string }) {
 }
 
 /**
- * Klub kartasiga o'tkazma (CARD_TRANSFER, docs/01-API.md §6.10): karta, summa, qadamlar va "pul o'tkazdim" formasi.
- * Yuborilgach klub tekshiradi — `transfer.pending` holatida kutish ko'rinishi.
+ * Klub kartasiga o'tkazma (CARD_TRANSFER, docs/01-API.md §6.10): karta, summa, izoh uchun bron kodi va "pul o'tkazdim" formasi.
+ * Yuborilgach bron darhol tasdiqlanadi (chipta faol), to'lovni operator keyin tekshiradi — `transfer.pending` ko'rinishi.
  */
 export function TransferPay({ booking: b, left, onSent }: { booking: BookingDetail; left: number | null; onSent: () => void }) {
   const { t, locale } = useI18n();
   const errorText = useErrorText();
-  const { me } = useAuth();
   const tr = b.transfer!;
-  const [name, setName] = useState<string | null>(null);
   const [last4, setLast4] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const payerName = name ?? [me?.first_name, me?.last_name].filter(Boolean).join(" ");
   const amount = formatMoney(tr.amount, locale);
 
   if (tr.pending) {
@@ -56,7 +53,7 @@ export function TransferPay({ booking: b, left, onSent }: { booking: BookingDeta
           <Spinner className="h-4 w-4" />
           {t("transfer.pendingTitle")}
         </div>
-        <div className="text-sm">{t("transfer.pendingBody", { payer: pl.payer_name ?? "—", last4: pl.payer_card_last4 ?? "····", amount: formatMoney(tr.pending.amount, locale) })}</div>
+        <div className="text-sm">{t("transfer.pendingBody", { last4: pl.payer_card_last4 ?? "····", amount: formatMoney(tr.pending.amount, locale) })}</div>
         <div className="text-xs text-muted">{t("transfer.pendingHint")}</div>
       </div>
     );
@@ -67,7 +64,7 @@ export function TransferPay({ booking: b, left, onSent }: { booking: BookingDeta
     setBusy(true);
     setError(null);
     try {
-      await session.post("/payments/transfer", { booking_id: b.id, payer_name: payerName.trim(), payer_card_last4: last4 }, { "Idempotency-Key": idemKey() });
+      await session.post("/payments/transfer", { booking_id: b.id, payer_card_last4: last4 }, { "Idempotency-Key": idemKey() });
       onSent();
     } catch (err) {
       setError(errorText(err));
@@ -103,6 +100,13 @@ export function TransferPay({ booking: b, left, onSent }: { booking: BookingDeta
             <CopyButton value={String(Math.round(tr.amount / 100))} />
           </div>
         </div>
+        <div className="border-t border-line-soft pt-3">
+          <div className="text-xs text-muted">{t("transfer.comment")}</div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-mono text-lg font-bold tracking-wider">{b.code}</div>
+            <CopyButton value={b.code} />
+          </div>
+        </div>
       </div>
 
       <ol className="space-y-1.5 text-sm">
@@ -115,10 +119,7 @@ export function TransferPay({ booking: b, left, onSent }: { booking: BookingDeta
       </ol>
 
       <form onSubmit={submit} className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
-          <Field label={t("transfer.payerName")}>
-            <Input value={payerName} onChange={(e) => setName(e.target.value)} minLength={2} maxLength={80} required autoComplete="name" />
-          </Field>
+        <div className="sm:max-w-[220px]">
           <Field label={t("transfer.payerLast4")}>
             <Input
               value={last4}
@@ -133,7 +134,7 @@ export function TransferPay({ booking: b, left, onSent }: { booking: BookingDeta
         </div>
         <p className="text-xs text-muted">{t("transfer.payerHint")}</p>
         {error && <Alert>{error}</Alert>}
-        <Button type="submit" size="lg" className="w-full" loading={busy} disabled={last4.length !== 4 || payerName.trim().length < 2}>
+        <Button type="submit" size="lg" className="w-full" loading={busy} disabled={last4.length !== 4}>
           {t("transfer.submit")}
         </Button>
       </form>

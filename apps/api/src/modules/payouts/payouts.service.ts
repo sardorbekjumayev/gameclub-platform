@@ -38,6 +38,8 @@ export class PayoutsService {
     const skipped: { club_id: string; reason: string }[] = [];
     await this.prisma.$transaction(async (tx) => {
       for (const clubId of clubIds) {
+        // Klub bo'yicha qulf — parallel hisoblashda bir davrga ikki payout yaratilmasin
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payout:${clubId}`}))`;
         const overlap = await tx.club_payouts.findFirst({ where: { club_id: clubId, status: { not: 'CANCELLED' }, period_start: { lt: end }, period_end: { gt: start } } });
         if (overlap) {
           skipped.push({ club_id: clubId, reason: 'OVERLAPPING_PAYOUT' });
@@ -71,7 +73,10 @@ export class PayoutsService {
     const p = await this.prisma.club_payouts.findUnique({ where: { id } });
     if (!p) throw new AppException('NOT_FOUND', 'Payout not found');
     if (p.status !== 'PENDING') throw new AppException('CONFLICT', `Payout is ${p.status}`);
-    const updated = await this.prisma.club_payouts.update({ where: { id }, data: { status: 'PAID', paid_at: new Date(), reference: dto.reference } });
+    // Faqat PENDING holatdan — parallel mark-paid/cancel bir-birini bosib ketmasin
+    const done = await this.prisma.club_payouts.updateMany({ where: { id, status: 'PENDING' }, data: { status: 'PAID', paid_at: new Date(), reference: dto.reference } });
+    if (!done.count) throw new AppException('CONFLICT', 'Payout is already processed');
+    const updated = await this.prisma.club_payouts.findUniqueOrThrow({ where: { id } });
     await this.audit.log({ actor_id: actor.id, club_id: p.club_id, action: 'admin.payout.paid', target_type: 'club_payout', target_id: id, new_value: { reference: dto.reference, net_amount: Number(p.net_amount) }, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
     return updated;
   }
@@ -80,7 +85,10 @@ export class PayoutsService {
     const p = await this.prisma.club_payouts.findUnique({ where: { id } });
     if (!p) throw new AppException('NOT_FOUND', 'Payout not found');
     if (p.status !== 'PENDING') throw new AppException('CONFLICT', `Payout is ${p.status}`);
-    const updated = await this.prisma.club_payouts.update({ where: { id }, data: { status: 'CANCELLED' } });
+    // Faqat PENDING holatdan — parallel mark-paid/cancel bir-birini bosib ketmasin
+    const done = await this.prisma.club_payouts.updateMany({ where: { id, status: 'PENDING' }, data: { status: 'CANCELLED' } });
+    if (!done.count) throw new AppException('CONFLICT', 'Payout is already processed');
+    const updated = await this.prisma.club_payouts.findUniqueOrThrow({ where: { id } });
     await this.audit.log({ actor_id: actor.id, club_id: p.club_id, action: 'admin.payout.cancel', target_type: 'club_payout', target_id: id, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
     return updated;
   }

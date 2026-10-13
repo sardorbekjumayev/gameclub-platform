@@ -273,7 +273,9 @@ export class AnalyticsService {
   async exportCsv(kind: 'bookings' | 'payments' | 'shifts', q: ClubAnalyticsQuery, grants: Grant[]) {
     const t = await this.exportTable(kind, q, grants);
     const esc = (v: unknown) => {
-      const s = v === null || v === undefined ? '' : v instanceof Date ? v.toISOString() : String(v);
+      let s = v === null || v === undefined ? '' : v instanceof Date ? v.toISOString() : String(v);
+      // CSV formula injection: matn (mijoz/xodim kiritgan) = + - @ bilan boshlansa Excel formula sifatida bajarmasin
+      if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
       return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     return '\uFEFF' + [t.header, ...t.rows].map((r) => r.map(esc).join(',')).join('\n');

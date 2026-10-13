@@ -1,8 +1,8 @@
 "use client";
 
 import type { LoginResult, SendOtpResult } from "@gc/types";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { Alert, Button, Card, Field, Input } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session, useAuth } from "@/lib/session";
@@ -14,6 +14,14 @@ const normalizePhone = (v: string) => {
 };
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <Login />
+    </Suspense>
+  );
+}
+
+function Login() {
   const { t } = useI18n();
   const errorText = useErrorText();
   const { me, signIn } = useAuth();
@@ -25,6 +33,7 @@ export default function LoginPage() {
   const [sent, setSent] = useState<SendOtpResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const fromBooking = useSearchParams().get("reason") === "book";
 
   useEffect(() => {
     // Kirgan foydalanuvchi — faqat ochilganda (verify'dan keyingi yo'naltirishni buzmaslik uchun)
@@ -60,20 +69,19 @@ export default function LoginPage() {
     }
   }
 
-  async function verify(e: React.FormEvent) {
-    e.preventDefault();
+  async function verify(value: string) {
     setBusy(true);
     setError(null);
     try {
-      const res = await session.post<LoginResult>("/auth/verify-otp", { phone: normalizePhone(phone), code, device: { platform: "web" } });
+      const res = await session.post<LoginResult>("/auth/verify-otp", { phone: normalizePhone(phone), code: value, device: { platform: "web" } });
       signIn(res.data);
       // Faqat ichki yo'l (open redirect oldi)
       const next = new URLSearchParams(window.location.search).get("next");
       const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+      // busy yoqiq qoladi — aks holda "kirgan foydalanuvchi → /profile" effekti `next` ni bosib ketadi
       router.replace(safeNext ?? (res.data.is_new ? "/profile?welcome=1" : "/"));
     } catch (err) {
       setError(errorText(err));
-    } finally {
       setBusy(false);
     }
   }
@@ -82,6 +90,11 @@ export default function LoginPage() {
     <main className="flex flex-1 items-center justify-center px-4 py-12">
       <Card className="w-full max-w-sm p-6">
         <h1 className="mb-5 font-display text-2xl font-bold">{t("auth.title")}</h1>
+        {fromBooking && step === "phone" && (
+          <div className="mb-4">
+            <Alert tone="info">{t("auth.reasonBook")}</Alert>
+          </div>
+        )}
         {error && (
           <div className="mb-4">
             <Alert>{error}</Alert>
@@ -103,7 +116,13 @@ export default function LoginPage() {
             </Button>
           </form>
         ) : (
-          <form className="space-y-4" onSubmit={verify}>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void verify(code);
+            }}
+          >
             {sent && !sent.delivered ? (
               <div className="space-y-3 rounded-xl border border-line bg-surface-2 p-4 text-sm">
                 <p>{t("auth.tgLinkHint")}</p>
@@ -130,7 +149,12 @@ export default function LoginPage() {
                 autoComplete="one-time-code"
                 maxLength={6}
                 value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                onChange={(e) => {
+                  const next = e.target.value.replace(/\D/g, "").slice(0, 6);
+                  setCode(next);
+                  // 6 raqam to'lganda avtomatik tasdiqlash — qo'shimcha bosish shart emas
+                  if (next.length === 6 && !busy) void verify(next);
+                }}
                 className="text-center font-mono text-lg tracking-[0.5em]"
                 autoFocus
                 required

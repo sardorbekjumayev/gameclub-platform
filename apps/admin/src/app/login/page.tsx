@@ -8,7 +8,7 @@ import { LocaleSwitcher } from "@/components/locale-switcher";
 import { Alert, Button, Card, Chip, Field, Input, Logo } from "@/components/ui";
 import { PANEL_ICON } from "@/components/wrong-panel";
 import { type MessageKey, useErrorText, useI18n } from "@/i18n/provider";
-import { PANEL, panelUrl } from "@/lib/panel";
+import { PANEL } from "@/lib/panel";
 import { session, useAuth } from "@/lib/session";
 import { normalizePhone } from "@/lib/use-api";
 
@@ -92,19 +92,6 @@ export default function LoginPage() {
               </li>
             ))}
           </ul>
-        </div>
-        <div className="relative flex flex-wrap gap-2 text-sm">
-          {(["platform", "club", "desk"] as const)
-            .filter((k) => k !== PANEL)
-            .map((k) => {
-              const Icon = PANEL_ICON[k];
-              return (
-                <a key={k} href={panelUrl(k)} className="inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 font-semibold text-muted transition hover:border-accent/50 hover:text-fg">
-                  <Icon className="h-4 w-4" />
-                  {t(`panel.${k}` as MessageKey)}
-                </a>
-              );
-            })}
         </div>
       </section>
       <div className="flex items-center justify-center px-4 py-12">

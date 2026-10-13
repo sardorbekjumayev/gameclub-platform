@@ -68,14 +68,15 @@ export function useI18n() {
 }
 
 /** API xato kodini lokalizatsiya qilingan matnga aylantiradi (klient `error.code` bo'yicha ishlaydi). */
+/** Barqaror (t o'zgarmaguncha bir xil) — effect bog'liqliklarida ishlatish xavfsiz. */
 export function useErrorText() {
   const { t } = useI18n();
-  return (e: unknown) => {
+  return useCallback((e: unknown) => {
     const { code, details } = (e ?? {}) as { code?: string; details?: { reason?: unknown } };
     // Aniqroq matn: `errors.<CODE>.<details.reason>` (masalan NEXT_BOOKING_SOON)
     const reasonKey = `errors.${code}.${details?.reason}` as MessageKey;
     if (code && typeof details?.reason === "string" && reasonKey in uz) return t(reasonKey);
     const key = `errors.${code}` as MessageKey;
     return code && key in uz ? t(key) : t("errors.UNKNOWN");
-  };
+  }, [t]);
 }

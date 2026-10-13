@@ -43,10 +43,15 @@ export const TEMPLATES: Record<string, T> = {
     ru: ['Проверьте перевод на карту', '{code}: {payer} (карта …{last4}) сообщил о переводе {amount}. Подтвердите или отклоните.'],
     en: ['Check the card transfer', '{code}: {payer} (card …{last4}) reports a transfer of {amount}. Confirm or reject it.'],
   },
+  TRANSFER_CONFIRMED: {
+    uz: ['To\'lovingiz tasdiqlandi', '{code}: {amount} o\'tkazmangiz operator tomonidan tasdiqlandi. Rahmat!'],
+    ru: ['Оплата подтверждена', '{code}: перевод {amount} подтверждён оператором. Спасибо!'],
+    en: ['Payment confirmed', '{code}: your transfer of {amount} was confirmed by the operator. Thank you!'],
+  },
   TRANSFER_REJECTED: {
-    uz: ['O\'tkazma tasdiqlanmadi', '{code}: klub o\'tkazmangizni topmadi — {reason}. Qayta tekshirib yuboring.'],
-    ru: ['Перевод не подтверждён', '{code}: клуб не нашёл ваш перевод — {reason}. Проверьте и отправьте снова.'],
-    en: ['Transfer not confirmed', '{code}: the club could not find your transfer — {reason}. Please check and resubmit.'],
+    uz: ['O\'tkazma tasdiqlanmadi', '{code}: klub o\'tkazmangizni topmadi — {reason}. Bron saqlanadi: qayta tekshirib yuboring yoki klubda to\'lang.'],
+    ru: ['Перевод не подтверждён', '{code}: клуб не нашёл ваш перевод — {reason}. Бронь сохранена: проверьте и отправьте снова или оплатите в клубе.'],
+    en: ['Transfer not confirmed', '{code}: the club could not find your transfer — {reason}. Your booking is kept: check and resubmit, or pay at the club.'],
   },
   REFUND_PENDING: {
     uz: ['Pul qaytariladi', '{code}: {amount} klub tomonidan kartangizga qaytariladi.'],

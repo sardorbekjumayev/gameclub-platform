@@ -2,7 +2,8 @@
 
 import { formatMoney } from "@gc/types";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { Check, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RefundPolicy } from "@/components/refund-policy";
 import { SeatMap } from "@/components/seat-map";
 import { Alert, Button, Card, Input, Spinner, cx } from "@/components/ui";
@@ -14,6 +15,25 @@ import { idemKey, useApi } from "@/lib/use-api";
 
 const DURATIONS = [60, 120, 180, 240, 300, 360] as const;
 const MAX_DEVICES = 5;
+const DRAFT_KEY = "gc.bookDraft";
+
+/** Kirmagan foydalanuvchi tanlovi — login'dan qaytganda tiklanadi (qaytadan tanlash shart emas). */
+type Draft = { branchId: string; date: string; hours: number; pkg: BranchPackage | null; start: string | null; picked: string[]; payMode: "ONLINE" | "AT_CLUB"; promo: string };
+
+function takeDraft(branchId: string): Draft | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Draft;
+    if (d.branchId !== branchId) return null;
+    sessionStorage.removeItem(DRAFT_KEY);
+    // O'tib ketgan vaqt tiklanmaydi
+    if (d.start && new Date(d.start).getTime() < Date.now()) return { ...d, start: null, picked: [] };
+    return d;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Bron vidjeti (docs/01-API.md §6.8): sana → davomiylik → vaqt (slots) → qurilma (availability) → bron.
@@ -26,14 +46,15 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
   const { me } = useAuth();
   const days = Math.min(branch.booking_settings.max_advance_days || 7, 14);
   const dates = useMemo(() => Array.from({ length: days + 1 }, (_, i) => tzDate(i, branch.timezone)), [days, branch.timezone]);
-  const [date, setDate] = useState(dates[0]);
-  const [hours, setHours] = useState<number>(120);
+  const [draft] = useState(() => takeDraft(branch.id));
+  const [date, setDate] = useState(draft && dates.includes(draft.date) ? draft.date : dates[0]);
+  const [hours, setHours] = useState<number>(draft?.hours ?? 120);
   /** Paket tanlansa davomiylik paketniki (qulflanadi), narx — paket narxi */
-  const [pkg, setPkg] = useState<BranchPackage | null>(null);
+  const [pkg, setPkg] = useState<BranchPackage | null>(draft?.pkg ?? null);
   const duration = pkg?.duration_minutes ?? hours;
-  const [start, setStart] = useState<string | null>(null);
-  const [picked, setPicked] = useState<string[]>([]);
-  const [payModeRaw, setPayMode] = useState<"ONLINE" | "AT_CLUB">("ONLINE");
+  const [start, setStart] = useState<string | null>(draft && dates.includes(draft.date) ? draft.start : null);
+  const [picked, setPicked] = useState<string[]>(draft && dates.includes(draft.date) ? draft.picked : []);
+  const [payModeRaw, setPayMode] = useState<"ONLINE" | "AT_CLUB">(draft?.payMode ?? "ONLINE");
   const cardTransfer = !!branch.payment_options?.card_transfer;
   const payModes = branch.payment_options?.pay_at_club === false ? (["ONLINE"] as const) : (["ONLINE", "AT_CLUB"] as const);
   // Klub "klubda to'lash"ni o'chirgan bo'lsa — faqat onlayn/karta
@@ -41,7 +62,13 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
   const [openedAt] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [promoInput, setPromoInput] = useState("");
+  const [promoInput, setPromoInput] = useState(draft?.promo ?? "");
+  const root = useRef<HTMLDivElement>(null);
+
+  // Login'dan qaytganda — to'g'ridan-to'g'ri bron vidjetiga
+  useEffect(() => {
+    if (draft) root.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [draft]);
   const [promo, setPromo] = useState<{ code: string; discount: number; total: number; amount: number } | null>(null);
   const [promoErr, setPromoErr] = useState<string | null>(null);
   const [promoBusy, setPromoBusy] = useState(false);
@@ -68,7 +95,7 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
     const code = promoInput.trim();
     if (!code) return;
     if (!me) {
-      router.push(`/login?next=${encodeURIComponent(`/clubs/${branch.id}`)}`);
+      goLogin();
       return;
     }
     setPromoBusy(true);
@@ -88,6 +115,19 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
     }
   }
 
+  const goLogin = () => {
+    try {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ branchId: branch.id, date, hours, pkg, start, picked, payMode, promo: promoInput } satisfies Draft));
+    } catch {
+      /* storage yo'q — tanlov qayta qilinadi */
+    }
+    router.push(`/login?next=${encodeURIComponent(`/clubs/${branch.id}`)}&reason=book`);
+  };
+
+  /** Eng arzon bo'sh joy(lar) — xaritadan qidirmasdan bir bosishda. */
+  const freeDevices = devices.filter((d) => d.status === "AVAILABLE" && !!d.price_quote).sort((a, b) => (a.price_quote?.amount ?? 0) - (b.price_quote?.amount ?? 0));
+  const pickAny = () => setPicked(freeDevices.slice(0, Math.max(1, picked.length)).map((d) => d.id));
+
   const resetFrom = (level: "date" | "duration" | "start") => {
     if (level !== "start") setStart(null);
     setPicked([]);
@@ -96,7 +136,7 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
 
   async function book() {
     if (!me) {
-      router.push(`/login?next=${encodeURIComponent(`/clubs/${branch.id}`)}`);
+      goLogin();
       return;
     }
     setBusy(true);
@@ -130,11 +170,11 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
   }
 
   return (
-    <Card className="space-y-5">
+    <Card className="scroll-mt-24 space-y-5" ref={root} id="book">
       <div className="font-display text-xl font-bold">{t("book.title")}</div>
 
       <section className="space-y-2">
-        <div className="text-[13px] font-semibold text-muted">{t("book.date")}</div>
+        <StepLabel n={1} done>{t("book.date")}</StepLabel>
         <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
           {dates.map((d, i) => (
             <button
@@ -152,7 +192,7 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
       </section>
 
       <section className="space-y-2">
-        <div className="text-[13px] font-semibold text-muted">{t("book.duration")}</div>
+        <StepLabel n={2} done>{t("book.duration")}</StepLabel>
         <div className="grid grid-cols-3 gap-2">
           {DURATIONS.map((m) => (
             <button
@@ -171,7 +211,8 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
         {!!packages.data?.length && (
           <div className="space-y-2 pt-1">
             <div className="text-[13px] font-semibold text-muted">{t("book.packages")}</div>
-            <div className="grid gap-2 sm:grid-cols-2">
+            {/* Telefonda gorizontal qator — vaqt tanlash pastga surilib ketmasin */}
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 sm:pb-0">
               {packages.data.map((p) => {
                 const on = pkg?.id === p.id;
                 return (
@@ -181,7 +222,7 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
                       setPkg(on ? null : p);
                       resetFrom("duration");
                     }}
-                    className={cx("rounded-xl px-3 py-2.5 text-left", on ? "bg-accent text-on-accent" : "border border-line bg-surface-2")}
+                    className={cx("w-[250px] shrink-0 rounded-xl px-3 py-2.5 text-left sm:w-auto", on ? "bg-accent text-on-accent" : "border border-line bg-surface-2")}
                   >
                     <span className="flex items-baseline justify-between gap-2">
                       <span className="text-sm font-bold">
@@ -206,7 +247,7 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
       </section>
 
       <section className="space-y-2">
-        <div className="text-[13px] font-semibold text-muted">{t("book.time")}</div>
+        <StepLabel n={3} done={!!start}>{t("book.time")}</StepLabel>
         {slots.loading ? (
           <Spinner className="mx-auto h-5 w-5" />
         ) : slots.error ? (
@@ -239,9 +280,19 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
       {start && (
         <section className="space-y-2">
           <div className="flex items-baseline justify-between">
-            <div className="text-[13px] font-semibold text-muted">{t("seat.title")}</div>
+            <StepLabel n={4} done={picked.length > 0}>{t("seat.title")}</StepLabel>
             <div className={cx("text-xs tabular-nums", picked.length ? "font-bold text-accent" : "text-muted")}>{t("seat.pickedOf", { n: picked.length, max: MAX_DEVICES })}</div>
           </div>
+          {!avail.loading && freeDevices.length > 0 && picked.length === 0 && (
+            <button
+              type="button"
+              onClick={pickAny}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-accent/50 bg-accent/10 text-sm font-bold text-accent transition hover:bg-accent/20"
+            >
+              <Sparkles className="h-4 w-4" />
+              {t("book.pickAny")}
+            </button>
+          )}
           {avail.loading ? (
             <Spinner className="mx-auto h-5 w-5" />
           ) : avail.error ? (
@@ -310,5 +361,17 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
         </section>
       )}
     </Card>
+  );
+}
+
+/** Qadam sarlavhasi: raqam (yoki bajarilgan bo'lsa belgi) + nom. */
+function StepLabel({ n, done, children }: { n: number; done?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 text-[13px] font-semibold text-muted">
+      <span className={cx("grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold", done ? "bg-accent text-on-accent" : "border border-line text-muted")}>
+        {done ? <Check className="h-3 w-3" strokeWidth={3} /> : n}
+      </span>
+      {children}
+    </div>
   );
 }

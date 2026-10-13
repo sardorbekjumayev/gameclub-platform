@@ -1,6 +1,7 @@
 "use client";
 
 import { formatDateTime, type Me } from "@gc/types";
+import { CalendarDays, ChevronRight, Gamepad2, Heart, LifeBuoy, type LucideIcon, Star } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -83,6 +84,14 @@ function ProfileForm({ me }: { me: Me }) {
       </div>
       {welcome && <Alert tone="info">{t("profile.welcomeNew")}</Alert>}
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
+      {/* Tezkor bo'limlar — telefonda pastki menyuga sig'magan sahifalar shu yerda */}
+      <nav className="divide-y divide-line-soft overflow-hidden rounded-2xl border border-line-soft bg-surface">
+        <QuickLink href="/bookings" icon={CalendarDays} label={t("nav.bookings")} />
+        <QuickLink href="/favorites" icon={Heart} label={t("nav.favorites")} />
+        <QuickLink href="/my-rentals" icon={Gamepad2} label={t("rent.mine")} />
+        <QuickLink href="/reviews" icon={Star} label={t("reviews.mine.title")} />
+        <QuickLink href="/support" icon={LifeBuoy} label={t("support.title")} />
+      </nav>
       <Card>
         <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
           <Field label={t("profile.phone")}>
@@ -112,14 +121,6 @@ function ProfileForm({ me }: { me: Me }) {
         </form>
       </Card>
       <PrefsCard />
-      <Link href="/reviews" className="flex items-center justify-between rounded-2xl border border-line bg-surface p-5 font-semibold hover:border-muted/60">
-        <span>{t("reviews.mine.title")}</span>
-        <span className="text-muted">→</span>
-      </Link>
-      <Link href="/support" className="flex items-center justify-between rounded-2xl border border-line bg-surface p-5 font-semibold hover:border-muted/60">
-        <span>{t("support.title")}</span>
-        <span className="text-muted">→</span>
-      </Link>
       <Card>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-display text-lg font-bold">{t("profile.sessions")}</h2>
@@ -162,6 +163,16 @@ function ProfileForm({ me }: { me: Me }) {
         )}
       </Card>
     </main>
+  );
+}
+
+function QuickLink({ href, icon: Icon, label }: { href: string; icon: LucideIcon; label: string }) {
+  return (
+    <Link href={href} className="flex min-h-14 items-center gap-3 px-4 font-semibold transition hover:bg-surface-2">
+      <Icon className="h-5 w-5 shrink-0 text-accent" />
+      <span className="flex-1">{label}</span>
+      <ChevronRight className="h-4 w-4 text-muted" />
+    </Link>
   );
 }
 
