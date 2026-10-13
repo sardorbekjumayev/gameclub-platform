@@ -83,7 +83,13 @@ describe('Analytics & reports (e2e)', () => {
       expect(d.customers).toMatchObject({ unique: 2, returning: 0, new: 2 });
       expect(Number.isInteger(d.gmv)).toBe(true);
       expect(d.occupancy.capacity_minutes).toBeGreaterThan(0);
-      expect(d.occupancy.busy_minutes).toBeGreaterThanOrEqual(3 * 60 - 3);
+      // Band vaqt davr ("bugun", filial vaqti) bilan kesiladi — yarim tunga yaqin bron ertangi kunga o'tadi
+      const from = new Date(d.range.from).getTime();
+      const to = new Date(d.range.to).getTime();
+      const items = await prisma.booking_items.findMany({ where: { booking: { code: { in: codesA } } }, select: { start_at: true, end_at: true } });
+      const expectedBusy = items.reduce((m, it) => m + Math.max(0, Math.min(it.end_at.getTime(), to) - Math.max(it.start_at.getTime(), from)) / 60_000, 0);
+      expect(items).toHaveLength(3);
+      expect(Math.abs(d.occupancy.busy_minutes - expectedBusy)).toBeLessThanOrEqual(1);
       expect(d.previous).toMatchObject({ gmv: 0, collected: 0 });
 
       const rb = await get(`/analytics/club/overview?club_id=${B.clubId}`, B.owner).expect(200);
