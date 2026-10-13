@@ -70,6 +70,21 @@ export class RemindersService implements OnApplicationBootstrap, OnApplicationSh
       sent++;
     }
 
+    // VIP (ochiq vaqt): shu qurilmada keyingi bron 15 daqiqadan keyin — xodimlar va mijozga
+    const openSoon = await this.prisma.sessions.findMany({
+      where: { is_open: true, status: { in: ['ACTIVE', 'PAUSED'] }, must_end_by: { gt: now, lte: new Date(t + 15 * MIN) } },
+      take: 500,
+    });
+    const oBranches = await this.branchInfo(openSoon.map((s) => s.branch_id));
+    const oDevices = new Map((await this.prisma.devices.findMany({ where: { id: { in: openSoon.map((s) => s.device_id) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+    for (const s of openSoon) {
+      const until = fmtTime(s.must_end_by!, oBranches.get(s.branch_id)?.tz);
+      const dedupe = `open-limit:${s.id}:${s.must_end_by!.getTime()}`;
+      await this.notifications.notifyClubStaff(s.club_id, s.branch_id, 'OPEN_SESSION_LIMIT_SOON', { device: oDevices.get(s.device_id) ?? '', until }, { session_id: s.id }, { dedupe_key: dedupe });
+      await this.notifications.notify([s.customer_id], 'SESSION_ENDING_SOON', { until }, { session_id: s.id, booking_id: s.booking_id }, { dedupe_key: `${dedupe}:c` });
+      sent++;
+    }
+
     // Sharh so'rovi: yakunlangan, sharhsiz, 1–24 soat oldin tugagan bronlar
     const done = await this.prisma.bookings.findMany({
       where: { status: 'COMPLETED', end_at: { lte: new Date(t - 60 * MIN), gt: new Date(t - 24 * 60 * MIN) } },

@@ -17,6 +17,7 @@ export class CreateBookingDto {
   @ApiProperty() @IsDateString() start_at!: string;
   @ApiProperty() @IsInt() @Min(15) @Max(1440) duration_minutes!: number;
   @ApiProperty({ type: [BookingItemDto], description: 'Bir bronda ko\'pi bilan 5 o\'rindiq' }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(5) @ValidateNested({ each: true }) @Type(() => BookingItemDto) items!: BookingItemDto[];
+  @ApiPropertyOptional({ description: 'Paket (qat\'iy davomiylik + narx); berilsa duration paketnikiga tenglanadi' }) @IsOptional() @IsUUID() package_id?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) promo_code?: string;
   @ApiPropertyOptional({ enum: ['APP', 'WEB', 'PHONE'] }) @IsOptional() @IsIn(['APP', 'WEB', 'PHONE']) source?: string;
   @ApiPropertyOptional({ enum: ['ONLINE', 'AT_CLUB'], description: 'AT_CLUB — klubda to\'lash (klub ruxsat bersa)' }) @IsOptional() @IsIn(['ONLINE', 'AT_CLUB']) payment_mode?: string;
@@ -61,6 +62,7 @@ export class AvailabilityQuery {
   @ApiPropertyOptional() @IsOptional() @IsString() device_type?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() room_id?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() category_id?: string;
+  @ApiPropertyOptional({ description: 'Paket (qat\'iy davomiylik + narx); berilsa duration paketnikiga tenglanadi' }) @IsOptional() @IsUUID() package_id?: string;
 }
 
 export class SlotsQuery {
@@ -69,4 +71,5 @@ export class SlotsQuery {
   @ApiPropertyOptional() @IsOptional() @IsString() device_type?: string;
   @ApiPropertyOptional({ description: "Ko'chirish uchun: shu bronning qurilmalari bo'yicha, o'z band vaqtini hisobga olmasdan (slot mos = free === qurilmalar soni)" })
   @IsOptional() @IsUUID() exclude_booking_id?: string;
+  @ApiPropertyOptional({ description: 'Paket: duration paketnikiga tenglanadi, oynadan tashqari slotlar chiqmaydi' }) @IsOptional() @IsUUID() package_id?: string;
 }

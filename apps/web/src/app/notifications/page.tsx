@@ -73,7 +73,8 @@ function Notifications() {
       {!loading && data?.length === 0 && <div className="rounded-2xl border border-dashed border-line py-12 text-center text-muted">{t("notifications.empty")}</div>}
       <ul className="space-y-2">
         {data?.map((n) => {
-          const href = typeof n.data?.booking_id === "string" ? `/bookings/${n.data.booking_id}` : null;
+          const href =
+            typeof n.data?.booking_id === "string" ? `/bookings/${n.data.booking_id}` : typeof n.data?.ticket_id === "string" ? `/support/${n.data.ticket_id}` : null;
           const body = (
             <div className="flex gap-3">
               <span className={cx("mt-2 h-2 w-2 shrink-0 rounded-full", n.read_at ? "bg-transparent" : "bg-accent")} aria-hidden />

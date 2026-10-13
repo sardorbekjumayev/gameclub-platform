@@ -25,6 +25,10 @@ export const DEFAULT_BOOKING_SETTINGS = {
   allow_category_booking: true,
   allow_specific_device: true,
   auto_no_show: true,
+  /** VIP / ochiq vaqt: kamida shuncha daqiqa to'lanadi */
+  open_min_minutes: 30,
+  /** VIP / ochiq vaqt: o'ynalgan vaqt shu qadamga yuqoriga yaxlitlanadi (1 — daqiqama-daqiqa) */
+  open_round_minutes: 5,
 };
 export type BookingSettings = typeof DEFAULT_BOOKING_SETTINGS;
 export const bookingSettings = (b: { booking_settings: unknown }): BookingSettings => ({ ...DEFAULT_BOOKING_SETTINGS, ...((b.booking_settings as object) ?? {}) });

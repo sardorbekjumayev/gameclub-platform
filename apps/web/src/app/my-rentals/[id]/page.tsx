@@ -12,6 +12,7 @@ import { type MessageKey, useErrorText, useI18n } from "@/i18n/provider";
 import { fmtDate, fmtTime } from "@/lib/format";
 import { session } from "@/lib/session";
 import type { RentalOrder } from "@/lib/types";
+import { SocialFollowCard } from "@/components/social";
 import { idemKey, useApi } from "@/lib/use-api";
 
 export default function RentalOrderPage() {
@@ -94,6 +95,7 @@ function RentalOrderView() {
         </div>
 
         <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm">{t(`rent.statusHint.${r.status}` as MessageKey)}</p>
+        {(r.status === "CONFIRMED" || r.status === "ACTIVE") && <SocialFollowCard />}
 
         {!closed && (
           <ol className="grid grid-cols-4 gap-2">

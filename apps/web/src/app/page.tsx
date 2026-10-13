@@ -24,6 +24,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import { ActiveSessions } from "@/components/active-sessions";
+import { SocialLinks, SocialPromoBanner, useSocial } from "@/components/social";
 import { type MessageKey, useI18n } from "@/i18n/provider";
 import type { BranchCard } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
@@ -47,6 +48,7 @@ export default function Home() {
     () => process.env.NEXT_PUBLIC_CLUB_PANEL_URL ?? `${window.location.protocol}//${window.location.hostname}:4730`,
     () => null,
   );
+  const social = useSocial();
   const top = useApi<BranchCard[]>("/discovery/search?limit=6&sort=rating");
   const clubs = top.data ?? [];
   const free = clubs.reduce((n, b) => n + b.free_devices, 0);
@@ -153,6 +155,7 @@ export default function Home() {
 
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
         <ActiveSessions />
+        <SocialPromoBanner />
 
         {/* STATISTIKA */}
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -314,7 +317,10 @@ export default function Home() {
 
       <footer className="border-t border-line-soft">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-8 text-sm text-muted sm:flex-row sm:items-center sm:justify-between sm:px-8">
-          <span>© {new Date().getFullYear()} Game Club · {t("home.footer")}</span>
+          <div className="flex flex-col gap-3">
+            <span>© {new Date().getFullYear()} Game Club · {t("home.footer")}</span>
+            <SocialLinks social={social} size="sm" />
+          </div>
           <div className="flex gap-5">
             <Link href="/clubs" className="hover:text-fg">
               {t("nav.clubs")}

@@ -98,6 +98,10 @@ export class DevicesController {
   tariffsPublic(@Param('branchId', uuid) id: string) {
     return this.devices.tariffs(id, null);
   }
+  @Public() @Get('branches/:branchId/packages') @ApiOperation({ summary: 'Paket narxlar (ommaviy: faol, regular_amount — tejash uchun)' })
+  packages(@Param('branchId', uuid) id: string) {
+    return this.devices.packages(id);
+  }
   @Get('branches/:branchId/tariffs/manage') @RequirePermission('tariffs.view')
   tariffs(@Param('branchId', uuid) id: string, @Grants() g: Grant[]) {
     return this.devices.tariffs(id, g);
@@ -122,8 +126,10 @@ export class DevicesController {
   @Public() @Post('branches/:branchId/price-quote') @ApiOperation({ summary: 'Narx hisoblash (promo bilan)' })
   async quote(@Param('branchId', uuid) branchId: string, @Body() dto: PriceQuoteDto, @CurrentUser() u?: AuthUser) {
     const ctx = await this.bookings.branchCtx(branchId, { requireActive: false });
+    const tariffs = await this.pricing.tariffs(branchId);
+    const pkg = dto.package_id ? this.pricing.findPackage(tariffs, dto.package_id) : null;
     const start = new Date(dto.start_at);
-    const end = new Date(start.getTime() + dto.duration_minutes * 60_000);
+    const end = new Date(start.getTime() + (pkg?.duration_minutes ?? dto.duration_minutes) * 60_000);
     let devices = dto.device_ids?.length
       ? await this.prisma.devices.findMany({ where: { id: { in: dto.device_ids }, branch_id: branchId, deleted_at: null } })
       : dto.category_id
@@ -131,8 +137,7 @@ export class DevicesController {
         : [];
     if (!devices.length) throw new AppException('VALIDATION_ERROR', 'device_ids or category_id is required', {});
     devices = devices.slice(0, 20);
-    const tariffs = await this.pricing.tariffs(branchId);
-    const items = devices.map((d) => ({ device_id: d.id, name: d.name, ...this.pricing.quoteDevice(tariffs, d, start, end, ctx.branch.timezone) }));
+    const items = devices.map((d) => ({ device_id: d.id, name: d.name, ...this.pricing.quoteDevice(tariffs, d, start, end, ctx.branch.timezone, pkg) }));
     const subtotal = items.reduce((s, i) => s + i.amount, 0n);
     let discount = 0n;
     let promo: unknown = null;

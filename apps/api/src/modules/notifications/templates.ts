@@ -63,6 +63,21 @@ export const TEMPLATES: Record<string, T> = {
     ru: ['Сессия началась', '{device} — до {until}. Хорошей игры!'],
     en: ['Session started', '{device} — until {until}. Have fun!'],
   },
+  SESSION_STARTED_OPEN: {
+    uz: ['VIP sessiya boshlandi', '{device} — vaqt ochiq. O\'ynaganingizcha hisoblanadi, to\'lov oxirida. Yaxshi o\'yin!'],
+    ru: ['VIP-сессия началась', '{device} — время открыто. Оплата в конце по фактическому времени. Хорошей игры!'],
+    en: ['VIP session started', '{device} — open time. You pay at the end for the time played. Have fun!'],
+  },
+  SESSION_ENDED_OPEN: {
+    uz: ['VIP sessiya tugadi', '{device}: {minutes} daqiqa — {amount}. Klubni baholang!'],
+    ru: ['VIP-сессия завершена', '{device}: {minutes} мин — {amount}. Оцените клуб!'],
+    en: ['VIP session ended', '{device}: {minutes} min — {amount}. Rate the club!'],
+  },
+  OPEN_SESSION_LIMIT_SOON: {
+    uz: ['VIP vaqti tugayapti', '{device} {until} da bron qilingan. VIP sessiyani yakunlang yoki boshqa joyga ko\'chiring.'],
+    ru: ['Скоро бронь на месте VIP', '{device} забронирован на {until}. Завершите VIP-сессию или пересадите гостя.'],
+    en: ['VIP seat is booked soon', '{device} is booked at {until}. End the VIP session or move the guest.'],
+  },
   SESSION_ENDED: {
     uz: ['Sessiya tugadi', '{device} sessiyasi yakunlandi. Klubni baholang!'],
     ru: ['Сессия завершена', 'Сессия на {device} завершена. Оцените клуб!'],
@@ -97,6 +112,26 @@ export const TEMPLATES: Record<string, T> = {
     uz: ['Murojaatingizga javob', '{subject}'],
     ru: ['Ответ на обращение', '{subject}'],
     en: ['Reply to your ticket', '{subject}'],
+  },
+  TICKET_RESOLVED: {
+    uz: ['Murojaatingiz hal qilindi', '{subject}. Savol qolsa, shu murojaatga yozing.'],
+    ru: ['Обращение решено', '{subject}. Если остались вопросы, напишите в это обращение.'],
+    en: ['Your ticket was resolved', '{subject}. Reply to the ticket if you still need help.'],
+  },
+  TICKET_CLOSED: {
+    uz: ['Murojaat yopildi', '{subject}'],
+    ru: ['Обращение закрыто', '{subject}'],
+    en: ['Ticket closed', '{subject}'],
+  },
+  TICKET_NEW: {
+    uz: ['Yangi murojaat', '{subject}'],
+    ru: ['Новое обращение', '{subject}'],
+    en: ['New ticket', '{subject}'],
+  },
+  TICKET_USER_REPLY: {
+    uz: ['Murojaatga yangi xabar', '{subject}'],
+    ru: ['Новое сообщение в обращении', '{subject}'],
+    en: ['New message in ticket', '{subject}'],
   },
   CASH_DIFFERENCE: {
     uz: ['Kassa farqi', '{branch}: smena yopildi, farq {amount}.'],

@@ -116,6 +116,10 @@ function ProfileForm({ me }: { me: Me }) {
         <span>{t("reviews.mine.title")}</span>
         <span className="text-muted">→</span>
       </Link>
+      <Link href="/support" className="flex items-center justify-between rounded-2xl border border-line bg-surface p-5 font-semibold hover:border-muted/60">
+        <span>{t("support.title")}</span>
+        <span className="text-muted">→</span>
+      </Link>
       <Card>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-display text-lg font-bold">{t("profile.sessions")}</h2>

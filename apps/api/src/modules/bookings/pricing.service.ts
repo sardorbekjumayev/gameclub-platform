@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { DeviceInput, PriceError, promoDiscount, quote, TariffInput } from '../../common/domain/price-engine';
+import { Prisma } from '@prisma/client';
+import { DeviceInput, PackageInput, PriceError, promoDiscount, quote, quotePackage, TariffInput } from '../../common/domain/price-engine';
 import { AppException } from '../../common/errors';
 import { PrismaService } from '../../database/prisma.service';
 
@@ -15,24 +16,51 @@ export class PricingService {
   constructor(private readonly prisma: PrismaService) {}
 
   async tariffs(branchId: string): Promise<TariffInput[]> {
-    return this.prisma.tariffs.findMany({ where: { branch_id: branchId, deleted_at: null, is_active: true }, include: { rules: true } });
+    return this.prisma.tariffs.findMany({
+      where: { branch_id: branchId, deleted_at: null, is_active: true },
+      include: { rules: true, packages: { where: { deleted_at: null, is_active: true }, orderBy: [{ position: 'asc' }, { duration_minutes: 'asc' }] } },
+    });
   }
 
-  quoteDevice(tariffs: TariffInput[], device: DeviceInput, start: Date, end: Date, tz: string) {
+  /** Filialning faol paketi (faol tarif ichida). Topilmasa PACKAGE_NOT_FOUND. */
+  findPackage(tariffs: TariffInput[], packageId: string): PackageInput {
+    const p = tariffs.flatMap((t) => t.packages ?? []).find((x) => x.id === packageId);
+    if (!p) throw new AppException('VALIDATION_ERROR', 'Package not found', { field: 'package_id', reason: 'PACKAGE_NOT_FOUND' });
+    return p;
+  }
+
+  /** Bron snapshot'i: klub paketni keyin o'zgartirsa ham bron shu shartlarda qoladi. */
+  packageSnapshot(p: PackageInput) {
+    return {
+      id: p.id, name: p.name, duration_minutes: p.duration_minutes, price: Number(p.price), tariff_id: p.tariff_id,
+      days_of_week: p.days_of_week, start_time: p.start_time ?? null, end_time: p.end_time ?? null,
+    };
+  }
+
+  /** Snapshot'dan paket (ko'chirishda). */
+  packageFromSnapshot(snap: Prisma.JsonValue | null): PackageInput | null {
+    const p = (snap as { package?: ReturnType<PricingService['packageSnapshot']> } | null)?.package;
+    return p ? { ...p, price: BigInt(p.price) } : null;
+  }
+
+  /** Paket berilsa paket narxi, aks holda soatlik tarif. */
+  quoteDevice(tariffs: TariffInput[], device: DeviceInput, start: Date, end: Date, tz: string, pkg?: PackageInput | null) {
     try {
-      return quote(tariffs, device, start, end, tz);
+      return pkg ? quotePackage(tariffs, device, start, pkg, tz) : quote(tariffs, device, start, end, tz);
     } catch (e) {
       if (e instanceof PriceError) {
         if (e.code === 'NO_TARIFF') throw new AppException('DEVICE_NOT_AVAILABLE', 'No tariff configured for device', e.details);
+        if (e.code === 'PACKAGE_DEVICE') throw new AppException('VALIDATION_ERROR', 'Package does not apply to this device', { field: 'package_id', reason: 'PACKAGE_DEVICE', ...e.details });
+        if (e.code === 'PACKAGE_TIME') throw new AppException('VALIDATION_ERROR', 'Package is not available at this time', { field: 'package_id', reason: 'PACKAGE_TIME', ...e.details });
         throw new AppException(e.code === 'BELOW_MIN' ? 'BOOKING_TOO_EARLY' : 'BOOKING_TOO_LATE', `Duration out of tariff range (${e.code})`, e.details);
       }
       throw e;
     }
   }
 
-  tryQuote(tariffs: TariffInput[], device: DeviceInput, start: Date, end: Date, tz: string) {
+  tryQuote(tariffs: TariffInput[], device: DeviceInput, start: Date, end: Date, tz: string, pkg?: PackageInput | null) {
     try {
-      return quote(tariffs, device, start, end, tz);
+      return pkg ? quotePackage(tariffs, device, start, pkg, tz) : quote(tariffs, device, start, end, tz);
     } catch {
       return null;
     }

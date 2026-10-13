@@ -78,6 +78,17 @@ export class TariffRuleDto {
   @ApiPropertyOptional({ example: '2026-12-31' }) @IsOptional() @IsDateString() date?: string;
 }
 
+export class TariffPackageDto {
+  @ApiPropertyOptional({ description: 'Mavjud paket — yangilanadi; yo\'q — yaratiladi' }) @IsOptional() @IsUUID() id?: string;
+  @ApiProperty({ example: '3 soat' }) @IsString() @MinLength(1) @MaxLength(60) name!: string;
+  @ApiProperty({ example: 180 }) @Type(() => Number) @IsInt() @Min(30) @Max(1440) duration_minutes!: number;
+  @ApiProperty({ description: 'tiyin — butun paket narxi', example: 3_000_000 }) @Type(() => Number) @IsInt() @Min(0) price!: number;
+  @ApiPropertyOptional({ example: [5, 6], description: "Bo'sh — har kuni" }) @IsOptional() @IsArray() @IsInt({ each: true }) @Min(1, { each: true }) @Max(7, { each: true }) days_of_week?: number[];
+  @ApiPropertyOptional({ example: '22:00', description: 'Boshlanish oynasi; end_time bilan birga' }) @IsOptional() @Matches(TIME) start_time?: string | null;
+  @ApiPropertyOptional({ example: '08:00' }) @IsOptional() @Matches(TIME) end_time?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() is_active?: boolean;
+}
+
 export class TariffDto {
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(80) name!: string;
   @ApiProperty({ description: 'tiyin/soat' }) @Type(() => Number) @IsInt() @Min(0) price_per_hour!: number;
@@ -92,6 +103,8 @@ export class TariffDto {
   @ApiPropertyOptional() @IsOptional() @IsDateString() valid_from?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() valid_to?: string;
   @ApiPropertyOptional({ type: [TariffRuleDto] }) @IsOptional() @IsArray() @ArrayMaxSize(50) @ValidateNested({ each: true }) @Type(() => TariffRuleDto) rules?: TariffRuleDto[];
+  @ApiPropertyOptional({ type: [TariffPackageDto], description: "Paketlar; berilsa ro'yxat to'liq almashtiriladi (yo'qlari o'chiriladi)" })
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => TariffPackageDto) packages?: TariffPackageDto[];
 }
 
 export class UpdateTariffDto extends TariffDto {
@@ -105,6 +118,7 @@ export class PriceQuoteDto {
   @ApiProperty() @IsDateString() start_at!: string;
   @ApiProperty() @IsInt() @Min(15) @Max(1440) duration_minutes!: number;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) promo_code?: string;
+  @ApiPropertyOptional({ description: 'Paket narxi bo\'yicha (duration paketnikiga tenglanadi)' }) @IsOptional() @IsUUID() package_id?: string;
 }
 
 export class RoomTariffDto {

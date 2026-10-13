@@ -4,13 +4,16 @@ import {
   BarChart3,
   Building,
   ClipboardCheck,
+  Inbox,
   Layers,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   type LucideIcon,
   Menu,
   MessageSquareWarning,
   Radio,
+  Share2,
   UserCircle,
   Users,
   Wallet,
@@ -21,6 +24,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CLUB_TABS } from "@/components/club-tabs";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { useSupportAwaiting } from "@/components/support";
 import { WrongPanel } from "@/components/wrong-panel";
 import { Alert, Button, Logo, Spinner, cx } from "@/components/ui";
 import { type MessageKey, useI18n } from "@/i18n/provider";
@@ -36,6 +40,8 @@ const PLATFORM_NAV: NavItem[] = [
   { href: "/platform/analytics", label: "nav.platformAnalytics", icon: BarChart3, permission: "platform.analytics.view", section: "nav.section.platform" },
   { href: "/platform/plans", label: "nav.plans", icon: Layers, permission: "platform.subscriptions.manage", section: "nav.section.platform" },
   { href: "/platform/users", label: "nav.users", icon: Users, permission: "platform.users.view", section: "nav.section.platform" },
+  { href: "/platform/support", label: "nav.support", icon: Inbox, permission: "platform.tickets.manage", section: "nav.section.platform" },
+  { href: "/platform/social", label: "nav.social", icon: Share2, permission: "platform.settings.manage", section: "nav.section.platform" },
   { href: "/platform/reviews", label: "nav.reviewModeration", icon: MessageSquareWarning, permission: "platform.reviews.moderate", section: "nav.section.platform" },
   { href: "/platform/payouts", label: "nav.payouts", icon: Wallet, permission: "platform.payouts.manage", section: "nav.section.platform" },
 ];
@@ -62,6 +68,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   const [open, setOpen] = useState(false);
   const allowed = !!me && canUsePanel(me, PANEL);
   const current = useCurrentClub();
+  const awaiting = useSupportAwaiting(allowed && PANEL === "platform" && can("platform.tickets.manage"), pathname);
 
   useEffect(() => {
     if (!loading && !me) router.replace("/login");
@@ -103,6 +110,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
           { href: "/live", label: "nav.live", icon: Radio, permission: "sessions.view" },
           ...clubNav(current.club?.id ?? null),
           ...(PANEL === "club" ? [{ href: "/clubs", label: "nav.clubs" as MessageKey, icon: Building, exact: true, section: "nav.section.account" as MessageKey }] : []),
+          { href: "/support", label: "nav.support", icon: LifeBuoy, section: "nav.section.account" },
         ];
   const items = [...nav.filter((i) => !i.permission || can(i.permission)), { href: "/profile", label: "nav.profile" as MessageKey, icon: UserCircle, section: "nav.section.account" as MessageKey }];
   const name = [me.first_name, me.last_name].filter(Boolean).join(" ") || me.email || me.phone;
@@ -154,7 +162,10 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
                 )}
               >
                 <i.icon className="h-[18px] w-[18px] shrink-0" />
-                {t(i.label)}
+                <span className="min-w-0 flex-1 truncate">{t(i.label)}</span>
+                {i.href === "/platform/support" && awaiting > 0 && (
+                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-bold text-on-accent">{awaiting > 99 ? "99+" : awaiting}</span>
+                )}
               </Link>
             </div>
           ))}

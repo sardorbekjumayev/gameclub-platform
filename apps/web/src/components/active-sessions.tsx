@@ -13,6 +13,10 @@ type ActiveSession = {
   expected_end_at: string | null;
   remaining_seconds: number | null;
   amount_due: number;
+  /** VIP (ochiq vaqt): o'ynalgan soniyalar va hozirgacha summa (server hisobi) */
+  is_open?: boolean;
+  elapsed_seconds?: number | null;
+  accrued_amount?: number | null;
   server_time: string;
   device: { name: string } | null;
   branch: { name: string; address: string; club: { name: string } } | null;
@@ -71,6 +75,24 @@ export function ActiveSessions() {
         {rows.map((s) => {
           const elapsed = s.status === "PAUSED" || !now ? 0 : Math.round((now - fetchedAt) / 1000);
           const left = s.remaining_seconds === null ? null : s.remaining_seconds - elapsed;
+          if (s.is_open) {
+            return (
+              <Card key={s.id} className="space-y-2 border border-accent">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold">{s.branch?.club.name}</span>
+                  <span className="text-sm text-muted">{s.device?.name}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted">
+                  <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-on-accent">VIP</span>
+                  {s.branch?.name}
+                </div>
+                <div className="font-display text-4xl font-bold tabular-nums text-accent">{clock((s.elapsed_seconds ?? 0) + elapsed)}</div>
+                <div className="text-xs text-muted">{s.status === "PAUSED" ? t("session.paused") : t("session.vipPlayed")}</div>
+                <div className="text-sm font-bold">{t("session.vipAccrued", { amount: formatMoney(s.accrued_amount ?? 0, locale) })}</div>
+                <div className="text-xs text-muted">{t("session.vipHint")}</div>
+              </Card>
+            );
+          }
           return (
             <Card key={s.id} className="space-y-2 border border-accent">
               <div className="flex items-center justify-between gap-2">

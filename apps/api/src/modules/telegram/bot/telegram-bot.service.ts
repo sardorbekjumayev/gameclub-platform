@@ -227,9 +227,11 @@ export class TelegramBotService implements OnModuleInit, OnApplicationBootstrap 
     }
   }
 
-  private when(lang: BotLang, start: Date, end: Date, tz: string) {
+  private when(lang: BotLang, start: Date, end: Date, tz: string, open = false) {
     const fmt = lang === 'en' ? 'cccc, d MMMM' : lang === 'ru' ? 'd MMMM, cccc' : 'd-MMMM, cccc';
     const s = DateTime.fromJSDate(start, { zone: tz }).setLocale(lang);
+    // VIP (ochiq vaqt): tugash vaqti operator yopguncha noma'lum
+    if (open) return `${s.toFormat(fmt)} · ${s.toFormat('HH:mm')}–… (VIP)`;
     const e = DateTime.fromJSDate(end, { zone: tz }).setLocale(lang);
     const endStr = s.hasSame(e, 'day') ? e.toFormat('HH:mm') : `${e.toFormat(fmt)} ${e.toFormat('HH:mm')}`;
     return `${s.toFormat(fmt)} · ${s.toFormat('HH:mm')}–${endStr}`;
@@ -297,7 +299,7 @@ export class TelegramBotService implements OnModuleInit, OnApplicationBootstrap 
       L('ticket.club', `${esc(d.club?.name)} — ${esc(d.branch?.name)}`),
       L('ticket.address', esc(d.branch?.address)),
       L('ticket.devices', [...new Set(seats)].join(', ') || '—'),
-      L('ticket.when', this.when(acc.lang, d.start_at, d.end_at, tz)),
+      L('ticket.when', this.when(acc.lang, d.start_at, d.end_at, tz, d.is_open && d.status !== 'COMPLETED')),
       L('ticket.duration', this.duration(acc.lang, d.duration_minutes)),
       L('ticket.status', bt(acc.lang, `status.${d.status}`)),
       '',
@@ -344,7 +346,7 @@ export class TelegramBotService implements OnModuleInit, OnApplicationBootstrap 
     const caption = bt(acc.lang, 'ticket.qr_caption', {
       code: qr.code,
       club: `${esc(d.club?.name)} — ${esc(d.branch?.name)}`,
-      when: this.when(acc.lang, d.start_at, d.end_at, d.branch?.timezone ?? 'Asia/Tashkent'),
+      when: this.when(acc.lang, d.start_at, d.end_at, d.branch?.timezone ?? 'Asia/Tashkent', d.is_open && d.status !== 'COMPLETED'),
     });
     await this.telegram.sendPhoto(chatId, png, caption, { protect_content: true });
   }

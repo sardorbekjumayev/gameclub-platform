@@ -65,9 +65,11 @@ export function BookingTicket({ booking: b, qrImg, showQr }: { booking: BookingD
 
       <div className="grid grid-cols-3 gap-2 px-5">
         <Cell icon={CalendarDays} label={t("ticket.date")} value={fmtDate(b.start_at, t, tz)} />
-        <Cell icon={Clock} label={t("ticket.time")} value={`${fmtTime(b.start_at, tz)}–${fmtTime(b.end_at, tz)}`} />
-        <Cell icon={Hourglass} label={t("ticket.duration")} value={durationLabel(b.duration_minutes, t)} />
+        <Cell icon={Clock} label={t("ticket.time")} value={b.is_open && b.status !== "COMPLETED" ? `${fmtTime(b.start_at, tz)}–…` : `${fmtTime(b.start_at, tz)}–${fmtTime(b.end_at, tz)}`} />
+        <Cell icon={Hourglass} label={t("ticket.duration")} value={b.is_open && b.status !== "COMPLETED" ? "VIP ∞" : durationLabel(b.duration_minutes, t)} />
       </div>
+      {b.package && <p className="px-5 pt-3 text-center text-xs font-semibold text-accent">{t("ticket.package", { name: b.package.name })}</p>}
+      {b.is_open && b.status !== "COMPLETED" && <p className="px-5 pt-3 text-center text-xs font-semibold text-accent">{t("booking.vipTicket")}</p>}
 
       <section className="px-5 pt-4">
         <div className="mb-2 text-[13px] font-bold">

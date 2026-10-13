@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { PageQuery } from '../../common/dto/pagination.dto';
 
 export class CreateReviewDto {
@@ -28,10 +28,14 @@ export class ModerateReviewDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) note?: string;
 }
 
+export const TICKET_TYPES = ['SUGGESTION', 'REQUEST', 'COMPLAINT', 'QUESTION', 'BUG', 'PAYMENT', 'OTHER'] as const;
+export const TICKET_STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const;
+
 export class CreateTicketDto {
-  @ApiProperty({ enum: ['COMPLAINT', 'QUESTION', 'BUG', 'PAYMENT'] }) @IsIn(['COMPLAINT', 'QUESTION', 'BUG', 'PAYMENT']) type!: string;
+  @ApiProperty({ enum: TICKET_TYPES, description: 'SUGGESTION — taklif, REQUEST — talab/so\'rov' }) @IsIn(TICKET_TYPES) type!: string;
   @ApiProperty() @IsString() @MinLength(3) @MaxLength(200) subject!: string;
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(4000) body!: string;
+  @ApiPropertyOptional({ description: 'STAFF — klub/operator panelidan (rol snapshot olinadi); bo\'lmasa mijoz' }) @IsOptional() @IsIn(['CUSTOMER', 'STAFF']) as?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() club_id?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() booking_id?: string;
 }
@@ -39,13 +43,33 @@ export class TicketMessageDto {
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(4000) body!: string;
 }
 export class TicketListQuery extends PageQuery {
-  @ApiPropertyOptional() @IsOptional() @IsIn(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']) status?: string;
+  @ApiPropertyOptional({ enum: TICKET_STATUSES }) @IsOptional() @IsIn(TICKET_STATUSES) status?: string;
+  @ApiPropertyOptional({ enum: TICKET_TYPES }) @IsOptional() @IsIn(TICKET_TYPES) type?: string;
+  @ApiPropertyOptional({ enum: ['CUSTOMER', 'STAFF'], description: 'Yuboruvchi: mijoz yoki klub xodimi (faqat all=true)' }) @IsOptional() @IsIn(['CUSTOMER', 'STAFF']) sender?: string;
+  @ApiPropertyOptional({ description: 'Faqat javob kutayotganlar' }) @IsOptional() @IsIn(['true', 'false']) awaiting?: string;
   @ApiPropertyOptional() @IsOptional() @IsIn(['true', 'false']) all?: string;
 }
 export class UpdateTicketDto {
-  @ApiPropertyOptional({ enum: ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] }) @IsOptional() @IsIn(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']) status?: string;
+  @ApiPropertyOptional({ enum: TICKET_STATUSES }) @IsOptional() @IsIn(TICKET_STATUSES) status?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() assigned_to?: string;
   @ApiPropertyOptional({ enum: ['LOW', 'NORMAL', 'HIGH', 'URGENT'] }) @IsOptional() @IsIn(['LOW', 'NORMAL', 'HIGH', 'URGENT']) priority?: string;
+}
+
+export const SOCIAL_KINDS = ['instagram', 'telegram', 'tiktok', 'youtube', 'facebook'] as const;
+export type SocialKind = (typeof SOCIAL_KINDS)[number];
+const SOCIAL_URL = /^(https:\/\/\S{3,300})?$/;
+
+/** Platformaning ijtimoiy tarmoqlari; bo'sh qator — o'chirish. */
+export class SocialLinksDto {
+  @ApiPropertyOptional({ example: 'https://instagram.com/gameclub.uz' }) @IsOptional() @IsString() @Matches(SOCIAL_URL) instagram?: string;
+  @ApiPropertyOptional({ example: 'https://t.me/gameclub_uz' }) @IsOptional() @IsString() @Matches(SOCIAL_URL) telegram?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Matches(SOCIAL_URL) tiktok?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Matches(SOCIAL_URL) youtube?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Matches(SOCIAL_URL) facebook?: string;
+}
+export class SocialSettingsDto {
+  @ApiProperty({ type: SocialLinksDto }) @IsObject() @ValidateNested() @Type(() => SocialLinksDto) links!: SocialLinksDto;
+  @ApiProperty({ description: 'Mijozlarga "obuna bo\'ling" taklifini ko\'rsatish (bosh sahifa banneri, chipta sahifasi)' }) @IsBoolean() promo_enabled!: boolean;
 }
 
 export class NotificationQuery {

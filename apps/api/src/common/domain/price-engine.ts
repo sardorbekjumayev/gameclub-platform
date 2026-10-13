@@ -24,6 +24,18 @@ export interface TariffInput {
   valid_from?: Date | null;
   valid_to?: Date | null;
   rules: TariffRuleInput[];
+  packages?: PackageInput[];
+}
+/** Paket (docs/01-API.md "Paket narxlar"): qat'iy davomiylik + qat'iy narx. */
+export interface PackageInput {
+  id: string;
+  tariff_id: string;
+  name: string;
+  duration_minutes: number;
+  price: bigint;
+  days_of_week: number[]; // bo'sh — har kuni
+  start_time?: string | null; // null — istalgan vaqt
+  end_time?: string | null;
 }
 export interface DeviceInput {
   id: string;
@@ -39,17 +51,20 @@ export interface PriceSegment {
   price_per_hour: number;
   minutes: number;
   amount: number;
+  package_id?: string;
 }
 export interface PriceResult {
   tariff_id: string;
   tariff_name: string;
   amount: bigint;
   segments: PriceSegment[];
+  /** Paket bo'yicha hisoblanganda: shu oraliqning oddiy tarif narxi (tejashni ko'rsatish uchun). */
+  package?: { id: string; name: string; duration_minutes: number; regular_amount: bigint };
 }
 
 export class PriceError extends Error {
   constructor(
-    readonly code: 'NO_TARIFF' | 'BELOW_MIN' | 'ABOVE_MAX',
+    readonly code: 'NO_TARIFF' | 'BELOW_MIN' | 'ABOVE_MAX' | 'PACKAGE_DEVICE' | 'PACKAGE_TIME',
     readonly details: Record<string, unknown> = {},
   ) {
     super(code);
@@ -138,6 +153,42 @@ export function quote(tariffs: TariffInput[], device: DeviceInput, start: Date, 
   flush(cursor);
   const amount = segments.reduce((s, x) => s + BigInt(x.amount), 0n);
   return { tariff_id: tariff.id, tariff_name: tariff.name, amount, segments };
+}
+
+/** Paket boshlanish paytida amal qiladimi: oyna boshlangan kun `days_of_week` da va vaqt oynada (kesib o'tuvchi ham). */
+export function packageAllowsStart(p: Pick<PackageInput, 'days_of_week' | 'start_time' | 'end_time'>, start: Date, tz: string): boolean {
+  const local = DateTime.fromJSDate(start, { zone: tz });
+  const dayOk = (d: DateTime) => !p.days_of_week.length || p.days_of_week.includes(d.weekday);
+  if (!p.start_time || !p.end_time) return dayOk(local);
+  const t = local.hour * 60 + local.minute;
+  const s = minutesOf(p.start_time);
+  const e = minutesOf(p.end_time);
+  if (s < e) return t >= s && t < e && dayOk(local);
+  if (s === e) return dayOk(local);
+  return (t >= s && dayOk(local)) || (t < e && dayOk(local.minus({ days: 1 })));
+}
+
+/**
+ * Paket narxi: qurilma tarifi (boshlanishda tanlangan) paket tarifi bo'lishi va boshlanish oynada bo'lishi shart.
+ * Davomiylik doim paketniki; tarif min/max tekshirilmaydi.
+ */
+export function quotePackage(tariffs: TariffInput[], device: DeviceInput, start: Date, pkg: PackageInput, tz: string): PriceResult {
+  const tariff = selectTariff(tariffs, device, start, tz);
+  if (!tariff) throw new PriceError('NO_TARIFF', { device_id: device.id });
+  if (tariff.id !== pkg.tariff_id) throw new PriceError('PACKAGE_DEVICE', { device_id: device.id, package_id: pkg.id });
+  if (!packageAllowsStart(pkg, start, tz)) throw new PriceError('PACKAGE_TIME', { package_id: pkg.id });
+  const end = new Date(start.getTime() + pkg.duration_minutes * 60_000);
+  const regular = quote([{ ...tariff, min_minutes: null, max_minutes: null }], device, start, end, tz);
+  return {
+    tariff_id: tariff.id,
+    tariff_name: tariff.name,
+    amount: pkg.price,
+    segments: [{
+      from: start.toISOString(), to: end.toISOString(), tariff_id: tariff.id, rule: 'PACKAGE', package_id: pkg.id,
+      price_per_hour: Number(tariff.price_per_hour), minutes: pkg.duration_minutes, amount: Number(pkg.price),
+    }],
+    package: { id: pkg.id, name: pkg.name, duration_minutes: pkg.duration_minutes, regular_amount: regular.amount },
+  };
 }
 
 /** Promo chegirmasi (docs/01-API.md §6.12). */

@@ -3,7 +3,7 @@
 import { formatMoney } from "@gc/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BranchPicker } from "@/components/club-tabs";
-import { DevicePanel, Modal, WalkInForm, isShiftRequired, remainingNow } from "@/components/live/device-panel";
+import { DevicePanel, Modal, type Success, WalkInForm, elapsedNow, isShiftRequired, remainingNow } from "@/components/live/device-panel";
 import { QrScanner } from "@/components/live/qr-scanner";
 import { TransferInbox } from "@/components/payments/transfer-inbox";
 import { ShiftPanel } from "@/components/live/shift-panel";
@@ -247,7 +247,7 @@ function Board({ branchId }: { branchId: string }) {
 }
 
 function DeviceCard({ d, now, onClick }: { d: LiveDevice; now: number; onClick: () => void }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const tone = TONE[d.occupancy];
   const remaining = remainingNow(d, now);
   return (
@@ -260,12 +260,28 @@ function DeviceCard({ d, now, onClick }: { d: LiveDevice; now: number; onClick: 
       </div>
       {d.occupancy === "OCCUPIED" && d.session ? (
         <>
-          <div className="mt-1.5 truncate text-[13px] text-muted">{d.session.customer_name ?? t("live.guest")}</div>
-          <div className={cx("mt-1 font-display text-xl font-bold tabular-nums", remaining !== null && remaining < 0 ? "text-danger-soft" : remaining !== null && remaining < 600 ? "text-warn" : "")}>
-            {remaining === null ? "—" : fmtClock(remaining)}
-            {d.session.status === "PAUSED" && <span className="ml-2 text-xs text-muted">⏸</span>}
+          <div className="mt-1.5 flex items-center gap-1.5 truncate text-[13px] text-muted">
+            {d.session.is_open && <span className="rounded-full bg-accent px-1.5 text-[10px] font-bold text-on-accent">VIP</span>}
+            <span className="truncate">{d.session.customer_name ?? t("live.guest")}</span>
           </div>
-          {d.session.amount_due > 0 && <div className="mt-1 text-xs font-bold text-warn">{t("live.unpaid")}</div>}
+          {d.session.is_open ? (
+            <>
+              <div className="mt-1 font-display text-xl font-bold tabular-nums">
+                {fmtClock(elapsedNow(d, now) ?? 0)}
+                {d.session.status === "PAUSED" && <span className="ml-2 text-xs text-muted">⏸</span>}
+              </div>
+              <div className="mt-1 text-xs font-bold text-accent">{t("live.vip.accrued", { amount: formatMoney(d.session.accrued_amount ?? 0, locale) })}</div>
+              {d.session.must_end_by && <div className="mt-0.5 text-[11px] font-bold text-warn">{t("live.vip.limitShort", { time: fmtTime(d.session.must_end_by) })}</div>}
+            </>
+          ) : (
+            <>
+              <div className={cx("mt-1 font-display text-xl font-bold tabular-nums", remaining !== null && remaining < 0 ? "text-danger-soft" : remaining !== null && remaining < 600 ? "text-warn" : "")}>
+                {remaining === null ? "—" : fmtClock(remaining)}
+                {d.session.status === "PAUSED" && <span className="ml-2 text-xs text-muted">⏸</span>}
+              </div>
+              {d.session.amount_due > 0 && <div className="mt-1 text-xs font-bold text-warn">{t("live.unpaid")}</div>}
+            </>
+          )}
         </>
       ) : d.occupancy === "RESERVED" && d.next_booking ? (
         <>
@@ -289,12 +305,12 @@ function WalkInModal({ branchId, free, onDone, onClose, onShiftRequired }: { bra
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function run(_: string, fn: () => Promise<unknown>, success?: string) {
+  async function run(_: string, fn: () => Promise<unknown>, success?: Success) {
     setBusy(true);
     setError(null);
     try {
-      await fn();
-      onDone(success);
+      const r = await fn();
+      onDone(typeof success === "function" ? success((r as { data?: unknown })?.data) : success);
     } catch (e) {
       if (isShiftRequired(e)) onShiftRequired();
       else setError(errorText(e));
@@ -388,6 +404,8 @@ function CheckInModal({ scan: initialScan, onDone, onClose, errorText }: { scan?
 
 /** Tile ostidagi qisqa matn: band joyda qolgan vaqt, bron qilinganda boshlanish vaqti. */
 function remainingBadge(d: LiveDevice, now: number): string | undefined {
+  const open = elapsedNow(d, now);
+  if (open != null) return `VIP ${fmtClock(open)}`;
   const sec = remainingNow(d, now);
   if (sec != null) return fmtClock(sec);
   if (d.next_booking) return fmtTime(d.next_booking.start_at);

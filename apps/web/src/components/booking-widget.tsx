@@ -9,7 +9,7 @@ import { Alert, Button, Card, Input, Spinner, cx } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { durationLabel, fmtDate, fmtTime, tzDate } from "@/lib/format";
 import { session, useAuth } from "@/lib/session";
-import type { Availability, BranchDetail, Slots } from "@/lib/types";
+import type { Availability, BranchDetail, BranchPackage, Slots } from "@/lib/types";
 import { idemKey, useApi } from "@/lib/use-api";
 
 const DURATIONS = [60, 120, 180, 240, 300, 360] as const;
@@ -27,7 +27,10 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
   const days = Math.min(branch.booking_settings.max_advance_days || 7, 14);
   const dates = useMemo(() => Array.from({ length: days + 1 }, (_, i) => tzDate(i, branch.timezone)), [days, branch.timezone]);
   const [date, setDate] = useState(dates[0]);
-  const [duration, setDuration] = useState<number>(120);
+  const [hours, setHours] = useState<number>(120);
+  /** Paket tanlansa davomiylik paketniki (qulflanadi), narx — paket narxi */
+  const [pkg, setPkg] = useState<BranchPackage | null>(null);
+  const duration = pkg?.duration_minutes ?? hours;
   const [start, setStart] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [payModeRaw, setPayMode] = useState<"ONLINE" | "AT_CLUB">("ONLINE");
@@ -43,8 +46,10 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
   const [promoErr, setPromoErr] = useState<string | null>(null);
   const [promoBusy, setPromoBusy] = useState(false);
 
-  const slots = useApi<Slots>(`/branches/${branch.id}/slots?date=${date}&duration=${duration}`);
-  const avail = useApi<Availability>(start ? `/branches/${branch.id}/availability?start_at=${encodeURIComponent(start)}&duration=${duration}` : null);
+  const packages = useApi<BranchPackage[]>(`/branches/${branch.id}/packages`);
+  const pkgQuery = pkg ? `&package_id=${pkg.id}` : "";
+  const slots = useApi<Slots>(`/branches/${branch.id}/slots?date=${date}&duration=${duration}${pkgQuery}`);
+  const avail = useApi<Availability>(start ? `/branches/${branch.id}/availability?start_at=${encodeURIComponent(start)}&duration=${duration}${pkgQuery}` : null);
 
   const holdMinutes = avail.data?.hold_minutes ?? branch.booking_settings.hold_minutes;
 
@@ -53,6 +58,8 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
   const devices = avail.data?.devices ?? [];
   const selected = devices.filter((d) => picked.includes(d.id));
   const total = selected.reduce((sum, d) => sum + (d.price_quote?.amount ?? 0), 0);
+  // Paket bo'yicha tejash: oddiy narx (server hisobi) − paket narxi
+  const saved = pkg ? selected.reduce((sum, d) => sum + Math.max(0, (d.price_quote?.regular_amount ?? 0) - (d.price_quote?.amount ?? 0)), 0) : 0;
 
   // Promo faqat server hisoblagan summa uchun amal qiladi; tanlov o'zgarsa qayta tekshirish kerak
   const promoOk = promo && promo.amount === total ? promo : null;
@@ -97,7 +104,16 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
     try {
       const res = await session.post<{ id: string }>(
         "/bookings",
-        { branch_id: branch.id, start_at: start, duration_minutes: duration, items: picked.map((device_id) => ({ device_id })), source: "WEB", payment_mode: payMode, ...(promoOk ? { promo_code: promoOk.code } : {}) },
+        {
+          branch_id: branch.id,
+          start_at: start,
+          duration_minutes: duration,
+          items: picked.map((device_id) => ({ device_id })),
+          source: "WEB",
+          payment_mode: payMode,
+          ...(pkg ? { package_id: pkg.id } : {}),
+          ...(promoOk ? { promo_code: promoOk.code } : {}),
+        },
         { "Idempotency-Key": idemKey() },
       );
       router.push(`/bookings/${res.data.id}${payMode === "ONLINE" ? "?pay=1" : ""}`);
@@ -142,15 +158,51 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
             <button
               key={m}
               onClick={() => {
-                setDuration(m);
+                setHours(m);
+                setPkg(null);
                 resetFrom("duration");
               }}
-              className={cx("h-10 rounded-xl text-sm font-bold", m === duration ? "bg-accent text-on-accent" : "border border-line bg-surface-2")}
+              className={cx("h-10 rounded-xl text-sm font-bold", !pkg && m === hours ? "bg-accent text-on-accent" : "border border-line bg-surface-2")}
             >
               {durationLabel(m, t)}
             </button>
           ))}
         </div>
+        {!!packages.data?.length && (
+          <div className="space-y-2 pt-1">
+            <div className="text-[13px] font-semibold text-muted">{t("book.packages")}</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {packages.data.map((p) => {
+                const on = pkg?.id === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      setPkg(on ? null : p);
+                      resetFrom("duration");
+                    }}
+                    className={cx("rounded-xl px-3 py-2.5 text-left", on ? "bg-accent text-on-accent" : "border border-line bg-surface-2")}
+                  >
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-bold">
+                        {p.name}
+                        <span className={cx("ml-1.5 text-xs font-medium", on ? "text-on-accent/80" : "text-muted")}>{p.tariff.name}</span>
+                      </span>
+                      <span className="font-display text-base font-bold tabular-nums">{formatMoney(p.price, locale)}</span>
+                    </span>
+                    <span className={cx("mt-0.5 flex flex-wrap justify-between gap-x-2 text-xs", on ? "text-on-accent/80" : "text-muted")}>
+                      <span>
+                        {durationLabel(p.duration_minutes, t)}
+                        {p.start_time && p.end_time ? ` · ${t("book.packageWindow", { from: p.start_time, to: p.end_time })}` : ""}
+                      </span>
+                      {p.regular_amount > p.price && <span className={cx("font-semibold", !on && "text-accent")}>{t("book.packageSave", { amount: formatMoney(p.regular_amount - p.price, locale) })}</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="space-y-2">
@@ -249,6 +301,7 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
               <span className="font-display text-2xl font-bold text-accent tabular-nums">{formatMoney(promoOk ? promoOk.total : total, locale)}</span>
             </span>
           </div>
+          {pkg && saved > 0 && <p className="text-right text-xs font-semibold text-accent">{t("book.packageSaved", { name: pkg.name, amount: formatMoney(saved, locale) })}</p>}
           <RefundPolicy policy={branch.cancellation_policy} />
           {error && <Alert>{error}</Alert>}
           <Button size="lg" className="w-full" loading={busy} onClick={book}>
