@@ -314,7 +314,7 @@ export default function Home() {
       <footer className="border-t border-line-soft">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-8 text-sm text-muted sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <div className="flex flex-col gap-3">
-            <span>© {new Date().getFullYear()} Game Club · {t("home.footer")}</span>
+            <span>© {new Date().getFullYear()} Zonup · <span className="font-semibold text-fg">zonup.uz</span> · {t("home.footer")}</span>
             <SocialLinks social={social} size="sm" />
           </div>
           <div className="flex gap-5">

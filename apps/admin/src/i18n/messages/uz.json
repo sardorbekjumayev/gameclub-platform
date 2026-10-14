@@ -1,5 +1,5 @@
 {
-  "app.title": "Game Club Panel",
+  "app.title": "Zonup Panel",
   "app.tagline": "Klub va platforma boshqaruvi",
   "common.loading": "Yuklanmoqda…",
   "common.save": "Saqlash",
@@ -63,7 +63,7 @@
   "auth.login.phone": "Telefon raqam",
   "auth.login.code": "Tasdiqlash kodi",
   "auth.login.sendCode": "Kod yuborish",
-  "auth.login.otpHint": "Kod Telegram'dagi Game Club botiga keladi. Klub ochmoqchi bo'lsangiz — shu usul bilan kiring.",
+  "auth.login.otpHint": "Kod Telegram'dagi Zonup botiga keladi. Klub ochmoqchi bo'lsangiz — shu usul bilan kiring.",
   "nav.clubs": "Klublarim",
   "nav.clubApprovals": "Klub arizalari",
   "onboarding.cta": "Klub ochish",

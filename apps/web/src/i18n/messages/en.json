@@ -1,5 +1,5 @@
 {
-  "app.title": "Game Club",
+  "app.title": "Zonup",
   "home.title": "Find a gaming club,",
   "home.subtitle": "See which clubs have free PCs and PS5s right now, pick a time, pay online and walk in with a QR — no queues.",
   "home.cta": "Find a club",
@@ -13,7 +13,7 @@
   "auth.title": "Sign in or sign up",
   "auth.phone": "Phone number",
   "auth.sendCode": "Get code",
-  "auth.codeSent": "The code was sent to the Game Club Telegram bot ({phone})",
+  "auth.codeSent": "The code was sent to the Zonup Telegram bot ({phone})",
   "auth.code": "Verification code",
   "auth.verify": "Verify",
   "auth.resendIn": "Resend in {s}s",

@@ -22,19 +22,19 @@ const DESCRIPTION =
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "Game Club — kompyuter klub va PlayStation zallarini onlayn bron qiling", template: "%s · Game Club" },
+  title: { default: "Zonup — kompyuter klub va PlayStation zallarini onlayn bron qiling", template: "%s · Zonup" },
   description: DESCRIPTION,
-  keywords: ["kompyuter klub", "game club", "PlayStation", "PS5", "VR", "kiberklub", "bron", "Toshkent", "компьютерный клуб", "игровой клуб", "бронирование"],
+  keywords: ["Zonup", "zonup.uz", "kompyuter klub", "game club", "PlayStation", "PS5", "VR", "kiberklub", "bron", "Toshkent", "компьютерный клуб", "игровой клуб", "бронирование"],
   alternates: { canonical: "/" },
-  openGraph: { type: "website", siteName: "Game Club", locale: "uz_UZ", url: "/", title: "Game Club", description: DESCRIPTION },
-  twitter: { card: "summary_large_image", title: "Game Club", description: DESCRIPTION },
+  openGraph: { type: "website", siteName: "Zonup", locale: "uz_UZ", url: "/", title: "Zonup", description: DESCRIPTION },
+  twitter: { card: "summary_large_image", title: "Zonup", description: DESCRIPTION },
   robots: { index: true, follow: true },
 };
 
 const JSON_LD = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: "Game Club",
+  name: "Zonup",
   url: SITE_URL,
   description: DESCRIPTION,
   potentialAction: { "@type": "SearchAction", target: `${SITE_URL}/clubs?q={query}`, "query-input": "required name=query" },

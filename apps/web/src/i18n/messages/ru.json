@@ -1,5 +1,5 @@
 {
-  "app.title": "Game Club",
+  "app.title": "Zonup",
   "home.title": "Найдите игровой клуб,",
   "home.subtitle": "Смотрите, где прямо сейчас свободны ПК и PS5, выбирайте время, платите онлайн и входите по QR — без очереди.",
   "home.cta": "Найти клуб",
@@ -13,7 +13,7 @@
   "auth.title": "Вход или регистрация",
   "auth.phone": "Номер телефона",
   "auth.sendCode": "Получить код",
-  "auth.codeSent": "Код отправлен в Telegram-бот Game Club ({phone})",
+  "auth.codeSent": "Код отправлен в Telegram-бот Zonup ({phone})",
   "auth.code": "Код подтверждения",
   "auth.verify": "Подтвердить",
   "auth.resendIn": "Повторно через {s} с",

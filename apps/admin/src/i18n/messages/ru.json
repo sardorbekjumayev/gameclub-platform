@@ -1,5 +1,5 @@
 {
-  "app.title": "Game Club Панель",
+  "app.title": "Zonup Панель",
   "app.tagline": "Управление клубом и платформой",
   "common.loading": "Загрузка…",
   "common.save": "Сохранить",
@@ -63,7 +63,7 @@
   "auth.login.phone": "Номер телефона",
   "auth.login.code": "Код подтверждения",
   "auth.login.sendCode": "Получить код",
-  "auth.login.otpHint": "Код придёт в Telegram-бот Game Club. Хотите открыть клуб — войдите этим способом.",
+  "auth.login.otpHint": "Код придёт в Telegram-бот Zonup. Хотите открыть клуб — войдите этим способом.",
   "nav.clubs": "Мои клубы",
   "nav.clubApprovals": "Заявки клубов",
   "onboarding.cta": "Открыть клуб",

@@ -1,5 +1,5 @@
 {
-  "name": "game-club-platform",
+  "name": "zonup-platform",
   "private": true,
   "packageManager": "pnpm@12.6.0",
   "scripts": {

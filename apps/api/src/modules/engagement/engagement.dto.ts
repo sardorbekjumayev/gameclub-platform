@@ -61,8 +61,8 @@ const SOCIAL_URL = /^(https:\/\/\S{3,300})?$/;
 
 /** Platformaning ijtimoiy tarmoqlari; bo'sh qator — o'chirish. */
 export class SocialLinksDto {
-  @ApiPropertyOptional({ example: 'https://instagram.com/gameclub.uz' }) @IsOptional() @IsString() @Matches(SOCIAL_URL) instagram?: string;
-  @ApiPropertyOptional({ example: 'https://t.me/gameclub_uz' }) @IsOptional() @IsString() @Matches(SOCIAL_URL) telegram?: string;
+  @ApiPropertyOptional({ example: 'https://instagram.com/zonup.uz' }) @IsOptional() @IsString() @Matches(SOCIAL_URL) instagram?: string;
+  @ApiPropertyOptional({ example: 'https://t.me/zonup_uz' }) @IsOptional() @IsString() @Matches(SOCIAL_URL) telegram?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Matches(SOCIAL_URL) tiktok?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Matches(SOCIAL_URL) youtube?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Matches(SOCIAL_URL) facebook?: string;

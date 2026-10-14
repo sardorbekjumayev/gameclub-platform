@@ -13,11 +13,11 @@ type Social = { links: Partial<Record<Kind, string>>; promo_enabled: boolean };
 
 /** Brend nomlari va namunaviy havolalar — tarjima qilinmaydi. */
 const META: Record<Kind, { name: string; example: string }> = {
-  instagram: { name: "Instagram", example: "https://instagram.com/gameclub.uz" },
-  telegram: { name: "Telegram", example: "https://t.me/gameclub_uz" },
-  tiktok: { name: "TikTok", example: "https://tiktok.com/@gameclub.uz" },
-  youtube: { name: "YouTube", example: "https://youtube.com/@gameclub" },
-  facebook: { name: "Facebook", example: "https://facebook.com/gameclub.uz" },
+  instagram: { name: "Instagram", example: "https://instagram.com/zonup.uz" },
+  telegram: { name: "Telegram", example: "https://t.me/zonup_uz" },
+  tiktok: { name: "TikTok", example: "https://tiktok.com/@zonup.uz" },
+  youtube: { name: "YouTube", example: "https://youtube.com/@zonup" },
+  facebook: { name: "Facebook", example: "https://facebook.com/zonup.uz" },
 };
 
 /** Super admin: platformaning ijtimoiy tarmoqlari va mijozlarga "obuna bo'ling" taklifi. */

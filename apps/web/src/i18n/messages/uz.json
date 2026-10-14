@@ -1,5 +1,5 @@
 {
-  "app.title": "Game Club",
+  "app.title": "Zonup",
   "home.title": "O'yin klubini toping,",
   "home.subtitle": "Qaysi klubda bo'sh PC yoki PS5 borligini hozir ko'ring, vaqtni tanlang, onlayn to'lang va QR bilan kiring — navbatsiz.",
   "home.cta": "Klub topish",
@@ -13,7 +13,7 @@
   "auth.title": "Kirish yoki ro'yxatdan o'tish",
   "auth.phone": "Telefon raqam",
   "auth.sendCode": "Kod olish",
-  "auth.codeSent": "Kod Telegram'dagi Game Club botiga yuborildi ({phone})",
+  "auth.codeSent": "Kod Telegram'dagi Zonup botiga yuborildi ({phone})",
   "auth.code": "Tasdiqlash kodi",
   "auth.verify": "Tasdiqlash",
   "auth.resendIn": "Qayta yuborish: {s} s",

@@ -141,7 +141,7 @@ export function Chip({ active, className, ...props }: React.ButtonHTMLAttributes
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={cx("font-display text-[22px] font-bold tracking-wide text-accent", className)}>
-      GAME<span className="text-fg">CLUB</span>
+      ZON<span className="text-fg">UP</span>
     </span>
   );
 }

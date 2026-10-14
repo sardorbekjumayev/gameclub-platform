@@ -1,5 +1,5 @@
 {
-  "app.title": "Game Club Admin",
+  "app.title": "Zonup Admin",
   "app.tagline": "Club and platform management",
   "common.loading": "Loading…",
   "common.save": "Save",
@@ -63,7 +63,7 @@
   "auth.login.phone": "Phone number",
   "auth.login.code": "Verification code",
   "auth.login.sendCode": "Send code",
-  "auth.login.otpHint": "The code arrives in the Game Club Telegram bot. Want to open a club? Sign in this way.",
+  "auth.login.otpHint": "The code arrives in the Zonup Telegram bot. Want to open a club? Sign in this way.",
   "nav.clubs": "My clubs",
   "nav.clubApprovals": "Club applications",
   "onboarding.cta": "Open a club",

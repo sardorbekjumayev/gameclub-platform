@@ -131,6 +131,13 @@ export function BookingTicket({ booking: b, qrImg, showQr }: { booking: BookingD
       <div className="p-5 pt-4">
         <RefundPolicy policy={b.cancellation_policy} preview={b.can_cancel ? b.refund_preview : null} paid={b.paid_amount} />
       </div>
+
+      <footer className="flex items-center justify-between border-t border-line-soft px-5 py-3">
+        <span className="font-display text-sm font-bold tracking-wide text-accent">
+          ZON<span className="text-fg">UP</span>
+        </span>
+        <span className="text-xs font-semibold text-muted">zonup.uz</span>
+      </footer>
     </article>
   );
 }

@@ -150,7 +150,7 @@ async function askKey(current) {
 }
 
 // ---------- asosiy oqim ----------
-console.log(bold('\nGame Club — lokal sozlash'));
+console.log(bold('\nZonup — lokal sozlash'));
 
 step(1, 'Talablarni tekshirish');
 const major = Number(process.versions.node.split('.')[0]);

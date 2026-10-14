@@ -57,10 +57,10 @@ describe('Social links (e2e)', () => {
     await http
       .put(api('/admin/settings/social'))
       .set(bearer(admin))
-      .send({ links: { instagram: 'https://www.instagram.com/gameclub.uz', telegram: 'https://t.me/gameclub_uz', tiktok: '' }, promo_enabled: true })
+      .send({ links: { instagram: 'https://www.instagram.com/zonup.uz', telegram: 'https://t.me/zonup_uz', tiktok: '' }, promo_enabled: true })
       .expect(200);
     const pub = await http.get(api('/social')).expect(200);
-    expect(pub.body.data).toEqual({ links: { instagram: 'https://www.instagram.com/gameclub.uz', telegram: 'https://t.me/gameclub_uz' }, promo_enabled: true });
+    expect(pub.body.data).toEqual({ links: { instagram: 'https://www.instagram.com/zonup.uz', telegram: 'https://t.me/zonup_uz' }, promo_enabled: true });
   });
 
   it('promo is off when there are no links', async () => {
