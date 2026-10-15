@@ -11,7 +11,7 @@ import { useErrorText, useI18n } from "@/i18n/provider";
 import { durationLabel, fmtDate, fmtTime, tzDate } from "@/lib/format";
 import { session, useAuth } from "@/lib/session";
 import type { Availability, BranchDetail, BranchPackage, Slots } from "@/lib/types";
-import { idemKey, useApi } from "@/lib/use-api";
+import { idemKey, useApi, useSubmitKey } from "@/lib/use-api";
 
 const DURATIONS = [60, 120, 180, 240, 300, 360] as const;
 const MAX_DEVICES = 5;
@@ -61,6 +61,8 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
   const payMode = payModes.length === 1 ? "ONLINE" : payModeRaw;
   const [openedAt] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const submitKey = useSubmitKey();
   const [error, setError] = useState<string | null>(null);
   const [promoInput, setPromoInput] = useState(draft?.promo ?? "");
   const root = useRef<HTMLDivElement>(null);
@@ -139,23 +141,23 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
       goLogin();
       return;
     }
+    // Ikki marta bosish: `busy` keyingi render'gacha yangilanmaydi — ref darhol to'sadi
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setError(null);
+    const body = {
+      branch_id: branch.id,
+      start_at: start,
+      duration_minutes: duration,
+      items: picked.map((device_id) => ({ device_id })),
+      source: "WEB",
+      payment_mode: payMode,
+      ...(pkg ? { package_id: pkg.id } : {}),
+      ...(promoOk ? { promo_code: promoOk.code } : {}),
+    };
     try {
-      const res = await session.post<{ id: string }>(
-        "/bookings",
-        {
-          branch_id: branch.id,
-          start_at: start,
-          duration_minutes: duration,
-          items: picked.map((device_id) => ({ device_id })),
-          source: "WEB",
-          payment_mode: payMode,
-          ...(pkg ? { package_id: pkg.id } : {}),
-          ...(promoOk ? { promo_code: promoOk.code } : {}),
-        },
-        { "Idempotency-Key": idemKey() },
-      );
+      const res = await session.post<{ id: string }>("/bookings", body, { "Idempotency-Key": submitKey(body) });
       router.push(`/bookings/${res.data.id}${payMode === "ONLINE" ? "?pay=1" : ""}`);
     } catch (e) {
       const code = (e as { code?: string }).code;
@@ -166,6 +168,7 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
         slots.reload();
       }
       setBusy(false);
+      submitting.current = false;
     }
   }
 

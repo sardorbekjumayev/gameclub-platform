@@ -153,6 +153,20 @@ describe('Bookings concurrency (e2e)', () => {
     expect(d.reschedule_count).toBe(0);
   });
 
+  it('double tap (same body + same Idempotency-Key, sequential) returns the same booking — no duplicate', async () => {
+    const [t] = await customers(1);
+    const key = crypto.randomUUID();
+    const body = { branch_id: C.branchId, start_at: at(9, 15), duration_minutes: 60, items: [{ category_id: categoryId }], payment_mode: 'AT_CLUB' };
+    const first = await h.http.post(api('/bookings')).set(bearer(t)).set('Idempotency-Key', key).send(body).expect(201);
+    const second = await h.http.post(api('/bookings')).set(bearer(t)).set('Idempotency-Key', key).send(body).expect(201);
+    expect(second.body.data.id).toBe(first.body.data.id);
+    expect(await prisma.bookings.count({ where: { customer_id: first.body.data.customer_id } })).toBe(1);
+    // Do'sti uchun yana bron — yangi kalit, yangi bron (boshqa qurilma)
+    const friend = await h.http.post(api('/bookings')).set(bearer(t)).set('Idempotency-Key', crypto.randomUUID()).send(body).expect(201);
+    expect(friend.body.data.id).not.toBe(first.body.data.id);
+    expect(friend.body.data.items[0].device_id).not.toBe(first.body.data.items[0].device_id);
+  });
+
   it('parallel retries with the same Idempotency-Key create exactly one booking', async () => {
     const [t] = await customers(1);
     const key = crypto.randomUUID();

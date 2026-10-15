@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useErrorText } from "@/i18n/provider";
 import { session } from "./session";
 
@@ -51,3 +51,16 @@ export const normalizePhone = (v: string) => {
 
 /** Takroriy yuborishdan himoya uchun Idempotency-Key. */
 export const idemKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+
+/**
+ * Forma uchun Idempotency-Key: bir xil so'rov tanasi — bir xil kalit (ikki marta bosish, tarmoq xatosidan keyin qayta
+ * yuborish → server birinchi natijani qaytaradi, dublikat yaratilmaydi); tana o'zgarsa — yangi kalit.
+ */
+export function useSubmitKey() {
+  const last = useRef<{ body: string; key: string } | null>(null);
+  return useCallback((body: unknown) => {
+    const s = JSON.stringify(body);
+    if (last.current?.body !== s) last.current = { body: s, key: idemKey() };
+    return last.current.key;
+  }, []);
+}
