@@ -256,7 +256,7 @@ PENDING_PAYMENT ──to'lov──► CONFIRMED ──check-in──► CHECKED_
    EXPIRED                    CANCELLED                              NO_SHOW
 ```
 Qoidalar:
-- Bir vaqtning o'zida `CUSTOMER_BOOKING_BLOCKED` bo'lgan (no-show limiti) mijoz bron qila olmaydi; bir mijozning bir xil vaqtga ikki bronini cheklash 🆕; bitta mijozning parallel `PENDING_PAYMENT` holdlari max 2.
+- Bir vaqtning o'zida `CUSTOMER_BOOKING_BLOCKED` bo'lgan (no-show limiti) mijoz bron qila olmaydi; bir mijoz bir vaqtga bir nechta bron qila oladi (masalan, do'stlari uchun boshqa PC — bitta qurilmani DB exclusion constraint himoya qiladi); bitta mijozning parallel `PENDING_PAYMENT` holdlari max 2.
 - **Cancel:** faqat `PENDING_PAYMENT|CONFIRMED` (va operator uchun `CHECKED_IN`). Refund foizi `cancellation_policy` bo'yicha (§6.10). Cancel tranzaksiyada: booking → CANCELLED, items.active=false, refund yaratiladi, event chiqadi.
 - **Reschedule:** yangi oraliq uchun availability qayta tekshiriladi va bir tranzaksiyada eski item bo'shatilib yangisi band qilinadi (constraint himoya qiladi). Narx farqi: yuqori bo'lsa qo'shimcha to'lov (`amount_due`), past bo'lsa farq refund yoki kreditlanadi (klub sozlamasi). Cheklov: boshlanishiga X daqiqa qolganda ko'chirib bo'lmaydi; max 2 marta.
 - **Check-in oynasi:** `start - early_checkin_minutes` … `start + grace_minutes` (default 15/15). Undan tashqarida `BOOKING_CHECKIN_WINDOW_CLOSED` (operator override uchun `force=true` + permission).

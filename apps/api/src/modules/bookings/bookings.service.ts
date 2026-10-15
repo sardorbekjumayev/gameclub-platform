@@ -332,8 +332,8 @@ export class BookingsService {
       try {
         const booking = await this.prisma.$transaction(async (tx) => {
           if (customerId) {
-            // Bir mijozning parallel so'rovlari (qo'sh bosish, web + mobile) navbat bilan: aks holda ikkalasi ham
-            // "shu vaqtda broningiz yo'q" deb ko'rib, kategoriya bronida ikki xil qurilmaga bir vaqtda ikkita bron ochiladi.
+            // Bir mijozning parallel so'rovlari navbat bilan — aks holda hammasi holdlar limitidan o'tib ketadi.
+            // Bir vaqtga bir nechta bron (do'stlari uchun boshqa PC) mumkin — bitta qurilmani esa exclusion constraint himoya qiladi.
             await tx.$queryRaw`SELECT id FROM users WHERE id = ${customerId}::uuid FOR UPDATE`;
             if (idempotencyKey) {
               const replay = await tx.bookings.findFirst({ where: { customer_id: customerId, idempotency_key: idempotencyKey }, select: { id: true } });
@@ -341,8 +341,6 @@ export class BookingsService {
             }
             const holds = await tx.bookings.count({ where: { customer_id: customerId, status: 'PENDING_PAYMENT', hold_expires_at: { gt: new Date() } } });
             if (holds >= maxHolds) throw new AppException('CONFLICT', 'Too many unpaid bookings', { reason: 'MAX_HOLDS' });
-            const overlap = await tx.bookings.count({ where: { customer_id: customerId, status: { in: LIVE_STATUSES }, start_at: { lt: end }, end_at: { gt: start }, NOT: { status: 'PENDING_PAYMENT', hold_expires_at: { lte: new Date() } } } });
-            if (overlap) throw new AppException('CONFLICT', 'You already have a booking at this time', { reason: 'OVERLAP' });
           }
           const devices = await tx.devices.findMany({ where: { branch_id: ctx.branch.id, deleted_at: null, operational_status: 'ACTIVE' }, orderBy: [{ position_order: 'asc' }, { name: 'asc' }] });
           await this.expireHolds(tx, { device_ids: devices.map((d) => d.id) });
@@ -638,11 +636,6 @@ export class BookingsService {
     }
     const duration = pkg?.duration_minutes ?? dto.duration_minutes ?? b.duration_minutes;
     const end = this.validateTime(ctx, start, duration, staff);
-    if (b.customer_id) {
-      // Bir mijozning bir vaqtga ikki broni bo'lmaydi (yaratishdagi qoida, §6.9)
-      const overlap = await this.prisma.bookings.count({ where: { id: { not: id }, customer_id: b.customer_id, status: { in: LIVE_STATUSES }, start_at: { lt: end }, end_at: { gt: start }, NOT: { status: 'PENDING_PAYMENT', hold_expires_at: { lte: new Date() } } } });
-      if (overlap) throw new AppException('CONFLICT', 'You already have a booking at this time', { reason: 'OVERLAP' });
-    }
     const blockedEnd = new Date(end.getTime() + ctx.settings.buffer_minutes * 60_000);
     const items = await this.prisma.booking_items.findMany({ where: { booking_id: id } });
     if (dto.device_id && items.length !== 1) throw new AppException('VALIDATION_ERROR', 'device_id can only be changed for single-device bookings', { field: 'device_id' });
