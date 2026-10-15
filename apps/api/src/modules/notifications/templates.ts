@@ -198,6 +198,11 @@ export const TEMPLATES: Record<string, T> = {
     ru: ['Консоль не возвращена', '{code}: {item} должна была вернуться в {until}.'],
     en: ['Console not returned', '{code}: {item} was due back at {until}.'],
   },
+  PASSWORD_RESET_BY_ADMIN: {
+    uz: ['Parolingiz tiklandi', '{club} administratori admin panel parolingizni tikladi. Vaqtinchalik parolni administratordan oling va kirgach yangisini o\'rnating. Bu siz so\'ramagan bo\'lsa, darhol administratorga murojaat qiling.'],
+    ru: ['Пароль сброшен', 'Администратор {club} сбросил ваш пароль от админ-панели. Получите временный пароль у администратора и после входа задайте новый. Если вы этого не запрашивали, немедленно свяжитесь с администратором.'],
+    en: ['Your password was reset', 'An administrator of {club} reset your admin panel password. Get the temporary password from them and set a new one after signing in. If you did not request this, contact your administrator immediately.'],
+  },
   BOOKING_REMINDER: {
     uz: ['Bron eslatmasi', '{code}: {club} — {when} ({minutes} daqiqadan keyin).'],
     ru: ['Напоминание о брони', '{code}: {club} — {when} (через {minutes} мин).'],

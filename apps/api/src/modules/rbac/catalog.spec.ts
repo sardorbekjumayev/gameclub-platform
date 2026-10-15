@@ -54,14 +54,18 @@ describe('RBAC catalog', () => {
   it('documented defaults (§5.3 + rentals): key permissions per role', () => {
     const op = role('OPERATOR');
     for (const p of ['devices.view', 'devices.status.change', 'bookings.create', 'bookings.checkin', 'sessions.stop', 'payments.create', 'shifts.open', 'rentals.view', 'rentals.process']) expect(op.has(p)).toBe(true);
-    for (const p of ['rentals.manage', 'reports.view', 'payments.refund', 'staff.create', 'promotions.view', 'reviews.reply']) expect(op.has(p)).toBe(false);
+    for (const p of ['rentals.manage', 'reports.view', 'payments.refund', 'staff.create', 'staff.reset_password', 'promotions.view', 'reviews.reply']) expect(op.has(p)).toBe(false);
     const ba = role('BRANCH_ADMIN');
     for (const p of ['rooms.create', 'tariffs.update', 'reports.view', 'staff.view', 'promotions.view', 'rentals.manage']) expect(ba.has(p)).toBe(true);
-    for (const p of ['reports.export', 'staff.create', 'promotions.manage', 'roles.manage']) expect(ba.has(p)).toBe(false);
+    for (const p of ['reports.export', 'staff.create', 'staff.reset_password', 'promotions.manage', 'roles.manage']) expect(ba.has(p)).toBe(false);
     const ca = role('CLUB_ADMIN');
-    for (const p of ['branches.update', 'staff.create', 'reports.export']) expect(ca.has(p)).toBe(true);
+    for (const p of ['branches.update', 'staff.create', 'staff.reset_password', 'reports.export']) expect(ca.has(p)).toBe(true);
     expect(ca.has('roles.manage')).toBe(false);
     expect(role('CLUB_OWNER').has('roles.manage')).toBe(true);
+    // Parolni tiklash: faqat klub boshqaruvchilari va super admin; SUPPORT emas
+    expect(role('CLUB_OWNER').has('staff.reset_password')).toBe(true);
+    expect(role('SUPER_ADMIN').has('staff.reset_password')).toBe(true);
+    expect(role('SUPPORT').has('staff.reset_password')).toBe(false);
   });
 
   it('scope types match role level', () => {

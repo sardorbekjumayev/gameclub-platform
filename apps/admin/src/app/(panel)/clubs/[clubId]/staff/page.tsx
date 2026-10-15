@@ -4,6 +4,7 @@ import { formatDateTime } from "@gc/types";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { ClubHeader } from "@/components/club-tabs";
+import { PendingPasswordBadge, ResetPasswordButton, canResetPassword } from "@/components/staff-password";
 import { Empty, LoadState, StatusBadge } from "@/components/status";
 import { Alert, Badge, Button, Card, Field, Input, Select } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
@@ -117,7 +118,12 @@ export default function StaffPage() {
             <tbody>
               {staff.data.map((s) => (
                 <tr key={s.id} className="border-b border-line-soft last:border-0">
-                  <td className="px-5 py-3">{[s.user.first_name, s.user.last_name].filter(Boolean).join(" ") || "—"}</td>
+                  <td className="px-5 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {[s.user.first_name, s.user.last_name].filter(Boolean).join(" ") || "—"}
+                      <PendingPasswordBadge user={s.user} />
+                    </div>
+                  </td>
                   <td className="px-5 py-3 font-mono text-xs">{s.user.phone ?? s.user.email}</td>
                   <td className="px-5 py-3">
                     <Badge tone={s.role === "CLUB_OWNER" ? "amber" : "violet"}>{t(`role.${s.role}` as never)}</Badge>
@@ -125,22 +131,25 @@ export default function StaffPage() {
                   <td className="px-5 py-3 text-muted">{s.branch_name ?? t("staff.allBranches")}</td>
                   <td className="px-5 py-3 text-muted">{s.user.last_login_at ? formatDateTime(s.user.last_login_at, undefined, locale) : "—"}</td>
                   <td className="px-5 py-3 text-right">
-                    {can("staff.delete") && s.role !== "CLUB_OWNER" && s.user.id !== me?.id && (
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        loading={busy === s.id}
-                        onClick={() =>
-                          confirm(t("staff.confirmRemove")) &&
-                          run(s.id, async () => {
-                            await session.delete(`/clubs/${clubId}/staff/${s.id}`);
-                            staff.reload();
-                          })
-                        }
-                      >
-                        {t("staff.remove")}
-                      </Button>
-                    )}
+                    <div className="flex items-center justify-end gap-2">
+                      {canResetPassword(me, can, clubId, staff.data ?? [], s.user.id) && <ResetPasswordButton clubId={clubId} user={s.user} onDone={staff.reload} />}
+                      {can("staff.delete") && s.role !== "CLUB_OWNER" && s.user.id !== me?.id && (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          loading={busy === s.id}
+                          onClick={() =>
+                            confirm(t("staff.confirmRemove")) &&
+                            run(s.id, async () => {
+                              await session.delete(`/clubs/${clubId}/staff/${s.id}`);
+                              staff.reload();
+                            })
+                          }
+                        >
+                          {t("staff.remove")}
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -10,7 +10,7 @@ import { BranchesService } from './branches.service';
 import { type Actor, ClubsService } from './clubs.service';
 import {
   AddStaffDto, AdminCreateClubDto, ClubDocumentDto, ClubListQuery, ClubSettingsDto, CreateBranchDto, CreateClubDto, CreateRoomDto,
-  CustomerNoteDto, HoursExceptionDto, InviteStaffDto, ReviewDocumentDto, UpdateBranchDto, UpdateClubDto, UpdateRoomDto, UpdateStaffDto,
+  CustomerNoteDto, HoursExceptionDto, InviteStaffDto, ResetStaffPasswordDto, ReviewDocumentDto, UpdateBranchDto, UpdateClubDto, UpdateRoomDto, UpdateStaffDto,
 } from './dto/clubs.dto';
 import { StaffService } from './staff.service';
 
@@ -170,6 +170,12 @@ export class ClubsController {
   @Delete('clubs/:clubId/staff/invitations/:invitationId') @RequirePermission('staff.create')
   revokeInvitation(@Param('clubId', uuid) id: string, @Param('invitationId', uuid) iid: string, @Grants() g: Grant[], @CurrentActor() a: Actor) {
     return this.staff.revokeInvitation(id, iid, g, a);
+  }
+
+  @Post('clubs/:clubId/staff/users/:userId/reset-password') @RequirePermission('staff.reset_password') @Idempotent({ redact: ['temporary_password'] })
+  @ApiOperation({ summary: 'Xodim parolini tiklash (ierarxiya bo\'yicha): vaqtinchalik parol javobda bir marta qaytadi, sessiyalar bekor, keyingi kirishda yangi parol shart' })
+  resetStaffPassword(@Param('clubId', uuid) id: string, @Param('userId', uuid) userId: string, @Body() dto: ResetStaffPasswordDto, @Grants() g: Grant[], @CurrentActor() a: Actor) {
+    return this.staff.resetPassword(id, userId, dto, g, a);
   }
 
   @Patch('clubs/:clubId/staff/:assignmentId') @RequirePermission('staff.update')

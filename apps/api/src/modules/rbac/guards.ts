@@ -1,9 +1,12 @@
 import { PrismaService } from '../../database/prisma.service';
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
+import Redis from 'ioredis';
 import { AppException } from '../../common/errors';
 import { AuthUser, IS_PUBLIC, REQUIRED_PERMISSION } from '../../common/decorators/auth.decorators';
+import { REDIS } from '../../infra/redis/redis.module';
+import { accessCutoffKey } from '../auth/password';
 import { RbacService } from './rbac.service';
 
 @Injectable()
@@ -11,6 +14,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly jwt: JwtService,
+    @Inject(REDIS) private readonly redis: Redis,
   ) {}
 
   async canActivate(ctx: ExecutionContext) {
@@ -24,7 +28,10 @@ export class JwtAuthGuard implements CanActivate {
       throw new AppException('UNAUTHORIZED', 'Authentication required');
     }
     try {
-      const payload = await this.jwt.verifyAsync<{ sub: string; type: AuthUser['type']; jti: string }>(token);
+      const payload = await this.jwt.verifyAsync<{ sub: string; type: AuthUser['type']; jti: string; iat?: number }>(token);
+      // Parol admin tomonidan tiklangan: undan oldin berilgan access token'lar ham bekor
+      const cutoff = await this.redis.get(accessCutoffKey(payload.sub));
+      if (cutoff && (payload.iat ?? 0) < Number(cutoff)) throw Object.assign(new Error('revoked'), { name: 'SessionRevoked' });
       req.user = { id: payload.sub, type: payload.type, jti: payload.jti } satisfies AuthUser;
       return true;
     } catch (e) {

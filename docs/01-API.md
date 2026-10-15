@@ -80,6 +80,7 @@ Xato:
 - Super Admin uchun 2FA **majburiy** 🆕.
 - Xodim taklifi 🆕: `POST /clubs/:clubId/staff/invitations` → SMS/email havola → `POST /auth/invitations/accept {token, password, name}`.
 - Parolni tiklash: `POST /auth/forgot-password`, `POST /auth/reset-password`.
+- Admin tomonidan tiklash 🆕 (2026-10-16): `POST /clubs/:clubId/staff/users/:userId/reset-password` — quyida "Xodim parolini tiklash" bo'limi.
 
 ### 4.3 Tokenlar
 - Access JWT 15 daqiqa (`sub`, `type`, `roles` qisqacha, `jti`). Refresh 30 kun, opaque random, DB'da **hash** (`refresh_tokens`), har ishlatilganda **rotation**; eski token qayta ishlatilsa (reuse) → butun `family_id` bekor qilinadi.
@@ -129,7 +130,7 @@ customers: customers.view, customers.notes.manage, customers.block
 payments:  payments.view, payments.create, payments.refund
 shifts:    shifts.open, shifts.close, shifts.view_all
 reports:   reports.view, reports.export
-staff:     staff.view, staff.create, staff.update, staff.delete, roles.manage
+staff:     staff.view, staff.create, staff.update, staff.delete, staff.reset_password, roles.manage
 reviews:   reviews.view, reviews.reply
 notifications: notifications.send, announcements.manage
 settings:  settings.view, settings.update
@@ -137,7 +138,7 @@ settings:  settings.view, settings.update
 Default rol → permission xaritasi seed faylida (`prisma/seed/rbac.ts`) yagona manba bo'lib turadi:
 - OPERATOR: `devices.view, devices.status.change, bookings.view/create/checkin/cancel, sessions.*, customers.view, payments.view/create, shifts.open/close`.
 - BRANCH_ADMIN: OPERATOR + `rooms.*, devices.*, tariffs.*, reports.view, staff.view, promotions.view` (o'z filiali).
-- CLUB_ADMIN: klub bo'yicha BRANCH_ADMIN + `branches.update, staff.*(operator darajasigacha), reports.export`.
+- CLUB_ADMIN: klub bo'yicha BRANCH_ADMIN + `branches.update, staff.*(operator darajasigacha), staff.reset_password, reports.export`.
 - CLUB_OWNER: klubdagi hamma permission (`platform.*` dan tashqari) + `roles.manage`.
 - Owner o'zidan yuqori/teng rolni bera olmaydi (privilege escalation oldi 🆕).
 
@@ -665,3 +666,13 @@ Bot (`@<TELEGRAM_BOT_USERNAME>`) endi faqat OTP emas: bog'langan raqam (`telegra
 - **Klientlar:** admin tariflar sahifasida tarif ichida "Paketlar" bo'limi (nom, davomiylik, narx, kunlar, oyna, tejash ko'rsatkichi). Web/mobile bron vidjetida davomiylik qadamida "Paketlar" chiplari (narx, "−X so'm tejaysiz"); tanlansa davomiylik qulflanadi. Chiptada paket nomi. Operator pulti walk-in formasida paket tanlash. Paket chiplarida tarif nomi ham ko'rsatiladi (bir xil nomli paketlar turli xonalarda bo'lishi mumkin). Demo seed: har xona tarifiga "3 soat" (≈2.5 soat narxi) va "Tungi paket" 22:00–08:00, 8 soat (≈5 soat narxi). Mobile — hali yo'q.
 
 ### tariff_packages (migratsiya `20261013160000_tariff_packages`)
+
+## Xodim parolini tiklash — ierarxiya bo'yicha (2026-10-16)
+**Qaror:** xodim (ega, klub admini, filial admini, operator) parolini unutsa — o'zidan yuqori turgan boshqaruvchi tiklaydi; o'z-o'zini tiklash (email/SMS) hozircha yo'q.
+- `POST /clubs/:clubId/staff/users/:userId/reset-password {password?}` — `staff.reset_password` (SUPER_ADMIN, CLUB_OWNER, CLUB_ADMIN), Idempotency-Key. `password` berilmasa server kuchli vaqtinchalik parol yaratadi (`Xxxx-xxxx-xxxx`, adashtiradigan belgilarsiz); berilsa parol siyosati (min 8, zaif ro'yxat). Javob: `{user_id, temporary_password, generated, must_change_password: true, sessions_revoked}` — parol **faqat shu javobda bir marta**; Idempotency-Key bilan takrorlansa `temporary_password: null` (saqlangan javobda parol yo'q).
+- **Ierarxiya:** maqsadning shu klubdagi eng yuqori roli (ega — `clubs.owner_id` ham) tiklovchinikidan past bo'lishi shart (`SUPER_ADMIN 100 > CLUB_OWNER 50 > CLUB_ADMIN 40 > BRANCH_ADMIN 30 > OPERATOR 20`; custom rol — CLUB 40, BRANCH 30). Super admin → ega/admin/har qanday xodim; ega → klub admini va pastdagilar; klub admini → filial admini/operator (ega va boshqa klub admini — `FORBIDDEN reason=RANK`).
+- **Rad etiladi:** o'zini (`FORBIDDEN reason=SELF_RESET` — profildan `POST /auth/password`), platforma akkaunti (`SUPER_ADMIN`/`SUPPORT`, `type=PLATFORM` — `reason=PLATFORM_ACCOUNT`), boshqa klubda ham xodim/ega bo'lgan akkaunt — faqat platforma tiklaydi (`reason=OTHER_CLUB`, bir klub boshqa klub akkauntini egallab olmasin). Shu klub xodimi emas yoki filial scope'idan tashqarida — `NOT_FOUND`; boshqa klub marshruti — guard `FORBIDDEN`.
+- **Amal (tranzaksiyada):** `password_hash` (argon2id), `users.must_change_password=true`, barcha `refresh_tokens` bekor; Redis `auth:access_cutoff:<userId>` (15 daq+) — undan oldin berilgan access JWT'lar va WebSocket handshake rad, ochiq socketlar uziladi. Audit `staff.password_reset` (`actor_id`, `club_id`, `target_id`, `new_value: {roles, generated, sessions_revoked}` — parolsiz). Foydalanuvchiga `PASSWORD_RESET_BY_ADMIN` bildirishnomasi (IN_APP + bog'langan bo'lsa Telegram; parol yo'q).
+- **Keyingi kirish:** `POST /auth/login` javobida va `user`/`GET /auth/me` da `must_change_password: true`. `POST /auth/password {password}` — vaqtinchalik parolning o'zi rad (`VALIDATION_ERROR reason=SAME_AS_TEMPORARY`), muvaffaqiyatda bayroq tushadi (audit `auth.password_changed_after_reset`). Server bayroq bilan boshqa endpointlarni bloklamaydi — majburiy ekran klientda.
+- `GET /clubs/:clubId/staff` — `user.must_change_password` ("yangi parol kutilmoqda" belgisi).
+- **Admin:** klub/operator panelida `/clubs/:id/staff` — har xodim qatorida "Parolni tiklash" (ruxsat va daraja bo'yicha), oynada avtomatik yoki qo'lda parol, natijada parol bir marta + nusxalash + ogohlantirish. Platforma panelida `/platform/clubs/:id` — "Klub boshqaruvchilari" (ega/adminlar) kartasi. `must_change_password` bo'lsa uchala panelda boshqa har qanday sahifadan oldin "Yangi parol o'rnating" ekrani. Mobile (faqat mijoz) — tegilmagan.

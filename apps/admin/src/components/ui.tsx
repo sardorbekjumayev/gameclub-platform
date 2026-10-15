@@ -170,3 +170,20 @@ export function Logo({ className }: { className?: string }) {
     </span>
   );
 }
+
+/** Pastdan chiquvchi (mobil) / markaziy (desktop) modal oyna. */
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-[20px] bg-bg p-5 shadow-2xl sm:rounded-[20px]" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="font-display text-xl font-bold">{title}</h2>
+          <button className="rounded-lg px-2 text-2xl leading-none text-muted hover:text-fg" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}

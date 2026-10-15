@@ -1,19 +1,25 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
+import Redis from 'ioredis';
 import { PageQuery, pageArgs } from '../../common/dto/pagination.dto';
 import { AppException } from '../../common/errors';
 import { Paginated } from '../../common/interceptors/response.interceptor';
 import { maskPhone } from '../../common/utils/codes';
 import { randomToken, sha256 } from '../../common/utils/crypto';
 import { uuidv7 } from '../../common/utils/id';
+import { REDIS } from '../../infra/redis/redis.module';
 import { SmsProvider } from '../../infra/sms/sms.provider';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { accessCutoffKey, assertStrongPassword, generateTempPassword, hashPassword } from '../auth/password';
+import { ACCESS_TTL_S } from '../auth/token.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { branchesInClub, can } from '../rbac/access';
 import { Grant, RbacService } from '../rbac/rbac.service';
 import { Actor } from './clubs.service';
-import { AcceptInvitationDto, AddStaffDto, InviteStaffDto, UpdateStaffDto } from './dto/clubs.dto';
+import { AcceptInvitationDto, AddStaffDto, InviteStaffDto, ResetStaffPasswordDto, UpdateStaffDto } from './dto/clubs.dto';
 import { EntitlementsService } from './entitlements.service';
 
 /** Rol darajasi — o'zidan yuqori/teng rol berib bo'lmaydi (privilege escalation oldi, §5.3). */
@@ -21,6 +27,8 @@ import { EntitlementsService } from './entitlements.service';
 const INVITE_TTL_MS = 72 * 3600_000;
 
 const RANK: Record<string, number> = { SUPER_ADMIN: 100, CLUB_OWNER: 50, CLUB_ADMIN: 40, BRANCH_ADMIN: 30, OPERATOR: 20 };
+/** Custom (klub) rollar darajasi noma'lum — xavfsiz tomonga: scope bo'yicha eng yuqori tizim roli darajasi. */
+const CUSTOM_RANK: Record<string, number> = { CLUB: RANK.CLUB_ADMIN, BRANCH: RANK.BRANCH_ADMIN };
 
 @Injectable()
 export class StaffService {
@@ -31,6 +39,9 @@ export class StaffService {
     private readonly entitlements: EntitlementsService,
     private readonly sms: SmsProvider,
     private readonly config: ConfigService,
+    private readonly notifications: NotificationsService,
+    private readonly realtime: RealtimeService,
+    @Inject(REDIS) private readonly redis: Redis,
   ) {}
 
   private myRank(grants: Grant[], clubId: string) {
@@ -53,7 +64,7 @@ export class StaffService {
     const allowed = branchesInClub(grants, 'staff.view', clubId);
     const rows = await this.prisma.user_roles.findMany({
       where: { club_id: clubId, ...(allowed ? { branch_id: { in: allowed } } : {}) },
-      include: { role: true, user: { select: { id: true, phone: true, email: true, first_name: true, last_name: true, status: true, last_login_at: true } } },
+      include: { role: true, user: { select: { id: true, phone: true, email: true, first_name: true, last_name: true, status: true, last_login_at: true, must_change_password: true } } },
       orderBy: { created_at: 'asc' },
     });
     const branches = await this.prisma.branches.findMany({ where: { club_id: clubId }, select: { id: true, name: true } });
@@ -109,6 +120,59 @@ export class StaffService {
     await this.audit.log({ actor_id: actor.id, club_id: clubId, action: 'staff.remove', target_type: 'user', target_id: ur.user_id, old_value: { role: ur.role.code, branch_id: ur.branch_id }, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
     await this.rbac.invalidate(ur.user_id);
     return { deleted: true };
+  }
+
+  // ---------- Parolni tiklash (ierarxiya bo'yicha) ----------
+
+  /**
+   * Xodim parolini tiklash: vaqtinchalik parol (yoki tiklovchi kiritgani) → argon2 hash, `must_change_password`,
+   * barcha refresh/access token'lar bekor, audit, foydalanuvchiga bildirishnoma (parolsiz).
+   * Faqat o'zidan past darajadagi shu klub xodimi; platforma akkaunti, o'zi va boshqa klub xodimi — yo'q.
+   */
+  async resetPassword(clubId: string, userId: string, dto: ResetStaffPasswordDto, grants: Grant[], actor: Actor) {
+    if (userId === actor.id) throw new AppException('FORBIDDEN', 'Use change password for your own account', { reason: 'SELF_RESET' });
+    const user = await this.prisma.users.findFirst({ where: { id: userId, deleted_at: null }, select: { id: true, type: true } });
+    const roles = user ? await this.prisma.user_roles.findMany({ where: { user_id: userId }, include: { role: true } }) : [];
+    const now = new Date();
+    const here = roles.filter((r) => r.club_id === clubId && r.role.code !== 'CUSTOMER' && (!r.expires_at || r.expires_at > now));
+    // Shu klub xodimi emas (yoki boshqa klubniki) — mavjudligini oshkor qilmaymiz
+    if (!user || !here.length) throw new AppException('NOT_FOUND', 'Staff not found');
+    if (here.some((r) => r.branch_id && !can(grants, 'staff.reset_password', { club_id: clubId, branch_id: r.branch_id }))) throw new AppException('NOT_FOUND', 'Staff not found');
+
+    if (user.type === 'PLATFORM' || roles.some((r) => r.role.scope_type === 'PLATFORM' && r.role.code !== 'CUSTOMER')) {
+      throw new AppException('FORBIDDEN', 'Platform accounts cannot be reset here', { reason: 'PLATFORM_ACCOUNT' });
+    }
+    // Boshqa klubda ham xodim/ega bo'lsa — faqat platforma (aks holda bir klub boshqa klub akkauntini egallab olishi mumkin)
+    const actorPlatform = grants.some((g) => g.scope_type === 'PLATFORM' && g.permissions.includes('staff.reset_password'));
+    if (!actorPlatform) {
+      const elsewhere = roles.some((r) => r.club_id && r.club_id !== clubId && r.role.code !== 'CUSTOMER')
+        || !!(await this.prisma.clubs.findFirst({ where: { owner_id: userId, id: { not: clubId } }, select: { id: true } }));
+      if (elsewhere) throw new AppException('FORBIDDEN', 'Staff member also belongs to another club; contact platform support', { reason: 'OTHER_CLUB' });
+    }
+    const owner = await this.prisma.clubs.findFirst({ where: { id: clubId, owner_id: userId }, select: { id: true } });
+    const targetRank = Math.max(owner ? RANK.CLUB_OWNER : 0, ...here.map((r) => RANK[r.role.code] ?? CUSTOM_RANK[r.role.scope_type] ?? 0));
+    if (targetRank >= this.myRank(grants, clubId)) throw new AppException('FORBIDDEN', 'Cannot reset the password of a role equal to or above your own', { reason: 'RANK' });
+
+    if (dto.password) assertStrongPassword(dto.password);
+    const password = dto.password ?? generateTempPassword();
+    const hash = await hashPassword(password);
+    const revoked = await this.prisma.$transaction(async (tx) => {
+      await tx.users.update({ where: { id: userId }, data: { password_hash: hash, must_change_password: true } });
+      const r = await tx.refresh_tokens.updateMany({ where: { user_id: userId, revoked_at: null }, data: { revoked_at: new Date() } });
+      // Parolning o'zi audit'ga yozilmaydi (CLAUDE.md qoida 9)
+      await this.audit.log({
+        actor_id: actor.id, club_id: clubId, action: 'staff.password_reset', target_type: 'user', target_id: userId,
+        new_value: { roles: here.map((x) => x.role.code), generated: !dto.password, sessions_revoked: r.count },
+        ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id,
+      }, tx);
+      return r.count;
+    });
+    // Hali amal qilayotgan access token'lar (15 daq) ham rad etiladi; ochiq socketlar uziladi
+    await this.redis.set(accessCutoffKey(userId), String(Math.floor(Date.now() / 1000)), 'EX', ACCESS_TTL_S + 60);
+    this.realtime.disconnectUser(userId);
+    const club = actorPlatform ? null : await this.prisma.clubs.findUnique({ where: { id: clubId }, select: { name: true } });
+    await this.notifications.notify([userId], 'PASSWORD_RESET_BY_ADMIN', { club: club?.name ?? 'Zonup' }, { club_id: clubId });
+    return { user_id: userId, temporary_password: password, generated: !dto.password, must_change_password: true, sessions_revoked: revoked };
   }
 
   // ---------- Takliflar (docs/01-API.md §4.2) ----------
