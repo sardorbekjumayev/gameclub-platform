@@ -90,7 +90,9 @@ export class PaymeMerchantService {
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) throw E.notFoundOrder();
     const p = await this.prisma.payments.findFirst({ where: { id, provider: 'PAYME' } });
     if (!p) throw E.notFoundOrder();
-    if (BigInt(Math.round(Number(params.amount))) !== p.amount) throw E.amount();
+    // Summa tiyinda; son bo'lmasa (BigInt(NaN) tizim xatosi emas) — noto'g'ri summa
+    const amount = Number(params.amount);
+    if (!Number.isFinite(amount) || BigInt(Math.round(amount)) !== p.amount) throw E.amount();
     return p;
   }
 

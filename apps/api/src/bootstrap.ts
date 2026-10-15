@@ -22,7 +22,7 @@ export function configureApp(app: INestApplication) {
 
 export function buildOpenApi(app: INestApplication) {
   const doc = new DocumentBuilder()
-    .setTitle('Game Club Platform API')
+    .setTitle('Zonup Platform API')
     .setVersion('1.0')
     .addBearerAuth()
     .build();

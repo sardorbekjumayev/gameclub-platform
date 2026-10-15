@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateIf, ValidateNested } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateIf, ValidateNested } from 'class-validator';
 import { PageQuery } from '../../common/dto/pagination.dto';
 
 /** Plan limitlari (docs/02-DATABASE.md: branches, devices, operators→staff, analytics, online_booking, api_access, pc_agent). null — cheksiz. */
@@ -18,7 +18,7 @@ export class CreatePlanDto {
   @ApiProperty({ example: 'STARTER' }) @Matches(/^[A-Z][A-Z0-9_]{1,29}$/) code!: string;
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(60) name!: string;
   @ApiProperty({ description: 'tiyin/oy' }) @Type(() => Number) @IsInt() @Min(0) price_per_month!: number;
-  @ApiProperty({ type: PlanLimitsDto }) @ValidateNested() @Type(() => PlanLimitsDto) limits!: PlanLimitsDto;
+  @ApiProperty({ type: PlanLimitsDto }) @IsObject() @ValidateNested() @Type(() => PlanLimitsDto) limits!: PlanLimitsDto;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() is_active?: boolean;
 }
 

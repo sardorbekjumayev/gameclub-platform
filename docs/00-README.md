@@ -1,4 +1,4 @@
-# GAME CLUB PLATFORM — Hujjatlar to'plami
+# ZONUP PLATFORM — Hujjatlar to'plami
 
 Bu papka `GAME-CLUB-PLATFORM-SPEC.md` asosida tahlil qilinib, har bir qism bo'yicha alohida hujjatga ajratilgan.
 Belgilar: 🆕 = asl spetsifikatsiyada yo'q, tahlil paytida qo'shilgan feature/qaror. ⚠️ = asl spetsifikatsiyadagi ziddiyat/aniqlik kerak bo'lgan joy, bu yerda hal qilingan.

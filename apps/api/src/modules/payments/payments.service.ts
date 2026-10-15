@@ -14,7 +14,6 @@ import { Actor } from '../clubs/clubs.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { assertCan, can, scopeFilter, scopeWhere } from '../rbac/access';
 import { Grant } from '../rbac/rbac.service';
-import { SettingsService } from '../settings/settings.service';
 import { CashPaymentDto, CloseShiftDto, CompleteRefundDto, OpenShiftDto, PaymentListQuery, RefundDto, RefundListQuery, RejectTransferDto, ShiftListQuery, TransferPaymentDto } from './dto/payments.dto';
 import { FinanceService } from './finance.service';
 import { PaymentProviders } from './providers/registry';
@@ -35,7 +34,6 @@ export class PaymentsService {
     private readonly finance: FinanceService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
-    private readonly settings: SettingsService,
     private readonly config: ConfigService,
     private readonly realtime: RealtimeService,
     private readonly providers: PaymentProviders,
@@ -96,20 +94,25 @@ export class PaymentsService {
         if ((e as { code?: string }).code === 'P2002') return { duplicate: true as const };
         throw e;
       }
+      // Bir to'lovga turli event_id bilan parallel kelgan webhooklar navbatlanadi — pul ikki marta yozilmasin
+      await tx.$queryRaw`SELECT id FROM payments WHERE id = ${ev.payment_id}::uuid FOR UPDATE`;
       const p = await tx.payments.findUnique({ where: { id: ev.payment_id } });
       if (!p) throw new AppException('NOT_FOUND', 'Payment not found');
-      if (p.status === 'PAID') return { duplicate: true as const };
+      // To'langan (keyin qisman/to'liq qaytarilgan bo'lsa ham) to'lov qayta PAID/FAILED qilinmaydi
+      if (['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(p.status)) return { duplicate: true as const };
       if (ev.status === 'FAILED') {
         await tx.payments.update({ where: { id: p.id }, data: { status: 'FAILED', failed_reason: 'Declined by provider' } });
         return { status: 'FAILED' as const, payment: p };
       }
       await this.finance.markPaid(tx, p.id, ev.provider_transaction_id);
       let autoRefunded = false;
+      let confirmedNow = false;
       if (p.booking_id) {
         const b = await tx.bookings.findUniqueOrThrow({ where: { id: p.booking_id } });
         if (b.status === 'PENDING_PAYMENT') {
           await tx.bookings.update({ where: { id: b.id }, data: { status: 'CONFIRMED', hold_expires_at: null } });
           await tx.booking_events.create({ data: { id: uuidv7(), booking_id: b.id, type: 'CONFIRMED', data: { payment_id: p.id } } });
+          confirmedNow = true;
         } else if (b.status === 'EXPIRED') {
           // Payment-after-expiry: slot bo'sh bo'lsa qayta band qilamiz, aks holda refund
           try {
@@ -118,6 +121,7 @@ export class PaymentsService {
             await tx.bookings.update({ where: { id: b.id }, data: { status: 'CONFIRMED', hold_expires_at: null } });
             await tx.$executeRaw`RELEASE SAVEPOINT reactivate`;
             await tx.booking_events.create({ data: { id: uuidv7(), booking_id: b.id, type: 'CONFIRMED_AFTER_EXPIRY' } });
+            confirmedNow = true;
           } catch {
             await tx.$executeRaw`ROLLBACK TO SAVEPOINT reactivate`;
             await this.finance.refundBooking(tx, b.id, p.amount, 'Payment after hold expiry — slot taken', null);
@@ -131,14 +135,16 @@ export class PaymentsService {
           autoRefunded = true;
         }
       }
-      return { status: 'PAID' as const, payment: p, autoRefunded };
+      return { status: 'PAID' as const, payment: p, autoRefunded, confirmedNow };
     });
     if ('duplicate' in outcome) return { processed: false, duplicate: true };
     const p = outcome.payment;
     const b = p.booking_id ? await this.prisma.bookings.findUnique({ where: { id: p.booking_id } }) : null;
     if (outcome.status === 'PAID') {
-      await this.notifications.notify([p.user_id], 'PAYMENT_SUCCESS', { amount: fmtMoney(p.amount), code: b?.code ?? '' }, { booking_id: p.booking_id, payment_id: p.id });
-      if (b && b.status === 'CONFIRMED') {
+      // Kartaga o'tkazma: bron mijoz yuborganda tasdiqlangan — endi faqat "to'lov operator tomonidan tasdiqlandi"
+      const paidType = p.method === 'CARD_TRANSFER' ? 'TRANSFER_CONFIRMED' : 'PAYMENT_SUCCESS';
+      await this.notifications.notify([p.user_id], paidType, { amount: fmtMoney(p.amount), code: b?.code ?? '' }, { booking_id: p.booking_id, payment_id: p.id });
+      if (b && b.status === 'CONFIRMED' && outcome.confirmedNow) {
         const branch = await this.prisma.branches.findUnique({ where: { id: b.branch_id }, include: { club: true } });
         await this.notifications.notify([b.customer_id], 'BOOKING_CONFIRMED', { code: b.code, club: branch?.club.name ?? '', when: fmtWhen(b.start_at, branch?.timezone) }, { booking_id: b.id });
         await this.notifications.notifyClubStaff(b.club_id, b.branch_id, 'NEW_BOOKING', { code: b.code, when: fmtWhen(b.start_at, branch?.timezone), devices: '' }, { booking_id: b.id });
@@ -153,7 +159,8 @@ export class PaymentsService {
   // ---------- Kartaga o'tkazma (CARD_TRANSFER) ----------
 
   /**
-   * Mijoz klub kartasiga o'tkazganini bildiradi → payment PROCESSING, hold klub tekshirishi uchun uzaytiriladi.
+   * Mijoz klub kartasiga o'tkazganini bildiradi → bron darhol CONFIRMED (chipta faol, mijoz kutmaydi),
+   * payment esa PROCESSING — klub bank ilovasida tekshirib tasdiqlaydi yoki rad etadi.
    * Pul platformadan o'tmaydi: komissiya va payout'ga kirmaydi (naqd kabi).
    */
   async transfer(userId: string, dto: TransferPaymentDto) {
@@ -161,28 +168,35 @@ export class PaymentsService {
     if (!b) throw new AppException('NOT_FOUND', 'Booking not found');
     if (!['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'ACTIVE'].includes(b.status)) throw new AppException('CONFLICT', `Cannot pay a ${b.status} booking`);
     if (b.status === 'PENDING_PAYMENT' && b.hold_expires_at && b.hold_expires_at <= new Date()) throw new AppException('BOOKING_HOLD_EXPIRED', 'Hold expired');
-    const club = await this.prisma.clubs.findUniqueOrThrow({ where: { id: b.club_id }, select: { transfer_card_number: true } });
+    const club = await this.prisma.clubs.findUniqueOrThrow({ where: { id: b.club_id }, select: { transfer_card_number: true, name: true } });
     if (!club.transfer_card_number) throw new AppException('PAYMENT_FAILED', 'Card transfer is not available for this club');
     const due = b.total_amount - b.paid_amount;
     if (due <= 0n) throw new AppException('PAYMENT_ALREADY_PAID', 'Booking is already paid');
-    const minutes = (await this.settings.get<number>('payments.transfer_confirm_minutes')) ?? 60;
-    const payment = await this.prisma.$transaction(async (tx) => {
+    const payerName = dto.payer_name?.trim() || null;
+    const { payment, confirmed } = await this.prisma.$transaction(async (tx) => {
       const open = await tx.payments.findFirst({ where: { booking_id: b.id, method: 'CARD_TRANSFER', status: 'PROCESSING' } });
       if (open) throw new AppException('CONFLICT', 'Transfer is already awaiting confirmation', { reason: 'TRANSFER_PENDING', payment_id: open.id });
       const p = await tx.payments.create({
         data: {
           id: uuidv7(), booking_id: b.id, user_id: userId, club_id: b.club_id, branch_id: b.branch_id, amount: due, method: 'CARD_TRANSFER', provider: 'CARD_TRANSFER', status: 'PROCESSING',
-          provider_payload: { payer_name: dto.payer_name.trim(), payer_card_last4: dto.payer_card_last4, card_last4: club.transfer_card_number!.slice(-4) },
+          provider_payload: { payer_name: payerName, payer_card_last4: dto.payer_card_last4, card_last4: club.transfer_card_number!.slice(-4) },
         },
       });
-      const until = new Date(Date.now() + minutes * 60_000);
-      if (b.status === 'PENDING_PAYMENT' && b.hold_expires_at && b.hold_expires_at < until) await tx.bookings.update({ where: { id: b.id }, data: { hold_expires_at: until } });
       await tx.booking_events.create({ data: { id: uuidv7(), booking_id: b.id, type: 'TRANSFER_SUBMITTED', actor_id: userId, data: { payment_id: p.id, amount: Number(due) } } });
-      return p;
+      // Hold tugashidan oldin (sweeper bilan poyga bo'lmasligi uchun shartli yangilash) bron tasdiqlanadi
+      const r = await tx.bookings.updateMany({ where: { id: b.id, status: 'PENDING_PAYMENT', hold_expires_at: { gt: new Date() } }, data: { status: 'CONFIRMED', hold_expires_at: null } });
+      if (b.status === 'PENDING_PAYMENT' && !r.count) throw new AppException('BOOKING_HOLD_EXPIRED', 'Hold expired');
+      if (r.count) await tx.booking_events.create({ data: { id: uuidv7(), booking_id: b.id, type: 'CONFIRMED', actor_id: userId, data: { payment_id: p.id, via: 'CARD_TRANSFER' } } });
+      return { payment: p, confirmed: r.count > 0 };
     });
-    await this.notifications.notifyClubStaff(b.club_id, b.branch_id, 'TRANSFER_PENDING', { code: b.code, payer: dto.payer_name.trim(), last4: dto.payer_card_last4, amount: fmtMoney(due) }, { booking_id: b.id, payment_id: payment.id });
+    if (confirmed) {
+      const branch = await this.prisma.branches.findUnique({ where: { id: b.branch_id }, select: { timezone: true } });
+      await this.notifications.notify([userId], 'BOOKING_CONFIRMED', { code: b.code, club: club.name, when: fmtWhen(b.start_at, branch?.timezone) }, { booking_id: b.id });
+      this.realtime.branch(b.branch_id, 'booking.updated', { booking_id: b.id });
+    }
+    await this.notifications.notifyClubStaff(b.club_id, b.branch_id, 'TRANSFER_PENDING', { code: b.code, payer: payerName ?? '—', last4: dto.payer_card_last4, amount: fmtMoney(due) }, { booking_id: b.id, payment_id: payment.id });
     this.realtime.branch(b.branch_id, 'payment.transfer_pending', { booking_id: b.id, payment_id: payment.id });
-    return payment;
+    return { ...payment, booking_status: confirmed ? 'CONFIRMED' : b.status };
   }
 
   private async loadTransfer(id: string, grants: Grant[]) {
@@ -253,7 +267,10 @@ export class PaymentsService {
     if (!r || !p || !can(grants, 'payments.refund', { club_id: p.club_id, branch_id: p.branch_id })) throw new AppException('NOT_FOUND', 'Refund not found');
     if (r.status !== 'PENDING') throw new AppException('CONFLICT', `Refund is ${r.status}`);
     const updated = await this.prisma.$transaction(async (tx) => {
-      const u = await tx.refunds.update({ where: { id }, data: { status: 'COMPLETED', completed_at: new Date(), provider_refund_id: dto.reference ?? r.provider_refund_id } });
+      // Faqat PENDING holatdan — parallel tasdiqlash ikki marta bajarilmasin
+      const done = await tx.refunds.updateMany({ where: { id, status: 'PENDING' }, data: { status: 'COMPLETED', completed_at: new Date(), provider_refund_id: dto.reference ?? r.provider_refund_id } });
+      if (!done.count) throw new AppException('CONFLICT', 'Refund is already processed');
+      const u = await tx.refunds.findUniqueOrThrow({ where: { id } });
       await this.audit.log({ actor_id: actor.id, club_id: r.club_id, action: 'refund.complete', target_type: 'refund', target_id: id, new_value: { amount: Number(r.amount), reference: dto.reference ?? null }, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id }, tx);
       return u;
     });
@@ -275,10 +292,14 @@ export class PaymentsService {
     if (!b) throw new AppException('NOT_FOUND', 'Booking not found');
     assertCan(grants, 'payments.create', { club_id: b.club_id, branch_id: b.branch_id });
     if (['CANCELLED', 'EXPIRED'].includes(b.status)) throw new AppException('CONFLICT', `Cannot take payment for ${b.status} booking`);
-    const due = b.total_amount - b.paid_amount;
-    const amount = dto.amount ? BigInt(dto.amount) : due;
-    if (amount <= 0n) throw new AppException('PAYMENT_ALREADY_PAID', 'Nothing to pay');
     const payment = await this.prisma.$transaction(async (tx) => {
+      // Bron qulflanib qarz qayta o'qiladi — parallel to'lovlar qarzdan oshib ketmasin (summa klientdan ishonilmaydi)
+      await tx.$queryRaw`SELECT id FROM bookings WHERE id = ${b.id}::uuid FOR UPDATE`;
+      const cur = await tx.bookings.findUniqueOrThrow({ where: { id: b.id } });
+      const due = cur.total_amount - cur.paid_amount;
+      if (due <= 0n) throw new AppException('PAYMENT_ALREADY_PAID', 'Nothing to pay');
+      const amount = dto.amount ? BigInt(dto.amount) : due;
+      if (amount > due) throw new AppException('VALIDATION_ERROR', 'Amount exceeds the amount due', { field: 'amount', due: Number(due) });
       const shift = await this.finance.openShift(tx, actor.id, b.branch_id);
       const p = await this.finance.recordOffline(tx, { club_id: b.club_id, branch_id: b.branch_id, booking_id: b.id, session_id: dto.session_id, user_id: b.customer_id, amount, method: dto.method, operator_id: actor.id, shift_id: shift.id });
       if (b.status === 'PENDING_PAYMENT') {
@@ -360,7 +381,13 @@ export class PaymentsService {
     assertCan(grants, 'shifts.open', { club_id: b.club_id, branch_id: b.id });
     const open = await this.prisma.cash_shifts.findFirst({ where: { operator_id: actor.id, status: 'OPEN' } });
     if (open) throw new AppException('CONFLICT', 'You already have an open shift', { shift_id: open.id });
-    const s = await this.prisma.cash_shifts.create({ data: { id: uuidv7(), club_id: b.club_id, branch_id: b.id, operator_id: actor.id, opening_cash: BigInt(dto.opening_cash) } });
+    // Parallel ochishda DB constraint (cash_shifts_one_open_per_operator) ushlaydi — 500 emas, 409
+    const s = await this.prisma.cash_shifts
+      .create({ data: { id: uuidv7(), club_id: b.club_id, branch_id: b.id, operator_id: actor.id, opening_cash: BigInt(dto.opening_cash) } })
+      .catch((e) => {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new AppException('CONFLICT', 'You already have an open shift');
+        throw e;
+      });
     await this.audit.log({ actor_id: actor.id, club_id: b.club_id, action: 'shift.open', target_type: 'cash_shift', target_id: s.id, new_value: { opening_cash: dto.opening_cash } });
     return this.shiftReport(s.id);
   }

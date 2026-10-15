@@ -110,7 +110,7 @@ export class OtpService implements OnModuleInit {
     if (chatId !== null) {
       await this.telegram.sendMessage(
         chatId,
-        `🎮 <b>Game Club</b>\n\nKirish kodi: <code>${code}</code>\n\nKod 2 daqiqa amal qiladi. Uni hech kimga bermang — Game Club xodimlari kodni hech qachon so'ramaydi.`,
+        `🎮 <b>Zonup</b>\n\nKirish kodi: <code>${code}</code>\n\nKod 2 daqiqa amal qiladi. Uni hech kimga bermang — Zonup xodimlari kodni hech qachon so'ramaydi.`,
         fromContact ? { reply_markup: { remove_keyboard: true } } : {},
       );
     }
@@ -176,7 +176,7 @@ export class OtpService implements OnModuleInit {
     if (linked && !nonce) return this.telegram.linked(m.chat.id); // bot menyusi
     await this.telegram.sendMessage(
       m.chat.id,
-      "🎮 <b>Game Club</b>\n\nKirish kodini olish uchun telefon raqamingizni tasdiqlang: pastdagi <b>«📱 Raqamni ulashish»</b> tugmasini bosing.",
+      "🎮 <b>Zonup</b>\n\nKirish kodini olish uchun telefon raqamingizni tasdiqlang: pastdagi <b>«📱 Raqamni ulashish»</b> tugmasini bosing.",
       { reply_markup: this.contactKeyboard() },
     );
   }

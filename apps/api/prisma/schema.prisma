@@ -429,6 +429,7 @@ model tariffs {
   updated_at     DateTime       @updatedAt @db.Timestamptz
   deleted_at     DateTime?      @db.Timestamptz
   rules          tariff_rules[]
+  packages       tariff_packages[]
 
   @@index([branch_id])
 }
@@ -445,6 +446,28 @@ model tariff_rules {
   created_at     DateTime  @default(now()) @db.Timestamptz
   updated_at     DateTime  @updatedAt @db.Timestamptz
   tariff         tariffs   @relation(fields: [tariff_id], references: [id], onDelete: Cascade)
+}
+
+model tariff_packages {
+  id               String    @id @db.Uuid
+  tariff_id        String    @db.Uuid
+  club_id          String    @db.Uuid
+  branch_id        String    @db.Uuid
+  name             String
+  duration_minutes Int
+  price            BigInt
+  days_of_week     Int[]     @default([]) @db.SmallInt
+  start_time       String? // HH:mm (kesib o'tuvchi bo'lishi mumkin)
+  end_time         String? // HH:mm
+  is_active        Boolean   @default(true)
+  position         Int       @default(0)
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  updated_at       DateTime  @updatedAt @db.Timestamptz
+  deleted_at       DateTime? @db.Timestamptz
+  tariff           tariffs   @relation(fields: [tariff_id], references: [id], onDelete: Cascade)
+
+  @@index([tariff_id])
+  @@index([branch_id])
 }
 
 model promotions {
@@ -577,6 +600,8 @@ model sessions {
   ended_by             String?           @db.Uuid
   end_reason           String?
   overtime_minutes     Int?
+  is_open              Boolean           @default(false)
+  must_end_by          DateTime?         @db.Timestamptz
   created_at           DateTime          @default(now()) @db.Timestamptz
   updated_at           DateTime          @updatedAt @db.Timestamptz
   charges              session_charges[]
@@ -810,21 +835,25 @@ model favorites {
 }
 
 model support_tickets {
-  id          String             @id @db.Uuid
-  user_id     String             @db.Uuid
-  club_id     String?            @db.Uuid
-  booking_id  String?            @db.Uuid
-  type        String
-  subject     String
-  status      String             @default("OPEN")
-  assigned_to String?            @db.Uuid
-  priority    String             @default("NORMAL")
-  created_at  DateTime           @default(now()) @db.Timestamptz
-  updated_at  DateTime           @updatedAt @db.Timestamptz
-  messages    support_messages[]
+  id              String             @id @db.Uuid
+  user_id         String             @db.Uuid
+  club_id         String?            @db.Uuid
+  booking_id      String?            @db.Uuid
+  type            String
+  subject         String
+  status          String             @default("OPEN")
+  assigned_to     String?            @db.Uuid
+  priority        String             @default("NORMAL")
+  sender_role     String             @default("CUSTOMER")
+  awaiting_reply  Boolean            @default(true)
+  last_message_at DateTime           @default(now()) @db.Timestamptz
+  created_at      DateTime           @default(now()) @db.Timestamptz
+  updated_at      DateTime           @updatedAt @db.Timestamptz
+  messages        support_messages[]
 
   @@index([user_id])
   @@index([status])
+  @@index([status, awaiting_reply, last_message_at(sort: Desc)], map: "support_tickets_inbox_idx")
 }
 
 model support_messages {
@@ -835,6 +864,8 @@ model support_messages {
   is_staff   Boolean         @default(false)
   created_at DateTime        @default(now()) @db.Timestamptz
   ticket     support_tickets @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+
+  @@index([ticket_id, created_at])
 }
 
 // ---------- 3.8 Bildirishnoma, obuna, sozlamalar ----------

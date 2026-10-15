@@ -59,8 +59,12 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   );
 }
 
-export function Card({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <div className={cx("rounded-[18px] bg-surface p-5", className)}>{children}</div>;
+export function Card({ className, children, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div {...props} className={cx("rounded-[18px] bg-surface p-5", className)}>
+      {children}
+    </div>
+  );
 }
 
 /** Katta raqamli ko'rsatkich kartasi (admin live panel uslubi). */
@@ -137,7 +141,7 @@ export function Chip({ active, className, ...props }: React.ButtonHTMLAttributes
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={cx("font-display text-[22px] font-bold tracking-wide text-accent", className)}>
-      GAME<span className="text-fg">CLUB</span>
+      ZON<span className="text-fg">UP</span>
     </span>
   );
 }

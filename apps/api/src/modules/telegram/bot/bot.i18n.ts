@@ -17,7 +17,7 @@ const uz = {
   'cmd.settings': 'Til va bildirishnoma sozlamalari',
   'cmd.help': 'Yordam',
 
-  welcome: "🎮 <b>Game Club</b>\n\nSalom, {name}! Bu yerda chiptalaringizni ko'rishingiz, QR-kodni olishingiz, bronni bekor qilishingiz va ma'lumotlaringizni boshqarishingiz mumkin.\n\nPastdagi menyudan tanlang 👇",
+  welcome: "🎮 <b>Zonup</b>\n\nSalom, {name}! Bu yerda chiptalaringizni ko'rishingiz, QR-kodni olishingiz, bronni bekor qilishingiz va ma'lumotlaringizni boshqarishingiz mumkin.\n\nPastdagi menyudan tanlang 👇",
   'no_account': "Raqamingiz ({phone}) bog'langan, lekin bu raqam bilan hali akkaunt yo'q.\nSaytda yoki ilovada shu raqam bilan kiring — keyin chiptalaringiz shu yerda ko'rinadi.",
   'rate_limited': "Juda tez-tez so'rov yuboryapsiz. Bir daqiqadan so'ng urinib ko'ring.",
   error: "Xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring.",
@@ -107,7 +107,7 @@ const uz = {
   'settings.choose_lang': 'Tilni tanlang:',
   'settings.lang_changed': "✅ Til o'zgartirildi.",
 
-  help: "❓ <b>Yordam</b>\n\n🎟 <b>Chiptalarim</b> — faol bronlar, QR-kod, bekor qilish\n📜 <b>Tarix</b> — o'tgan bronlar\n👤 <b>Profilim</b> — ma'lumotlaringiz, statistika, sevimli klublar\n🔔 <b>Bildirishnomalar</b> — oxirgi xabarlar\n⚙️ <b>Sozlamalar</b> — til va xabarlar\n\nBuyruqlar: /tickets /history /profile /notifications /settings\n\nKirish kodi ham shu botga keladi. Kodni hech kimga bermang — Game Club xodimlari uni hech qachon so'ramaydi.",
+  help: "❓ <b>Yordam</b>\n\n🎟 <b>Chiptalarim</b> — faol bronlar, QR-kod, bekor qilish\n📜 <b>Tarix</b> — o'tgan bronlar\n👤 <b>Profilim</b> — ma'lumotlaringiz, statistika, sevimli klublar\n🔔 <b>Bildirishnomalar</b> — oxirgi xabarlar\n⚙️ <b>Sozlamalar</b> — til va xabarlar\n\nBuyruqlar: /tickets /history /profile /notifications /settings\n\nKirish kodi ham shu botga keladi. Kodni hech kimga bermang — Zonup xodimlari uni hech qachon so'ramaydi.",
 
   'status.PENDING_PAYMENT': "⏳ To'lov kutilmoqda",
   'status.CONFIRMED': '✅ Tasdiqlangan',
@@ -142,7 +142,7 @@ const ru: Record<BotKey, string> = {
   'cmd.settings': 'Язык и уведомления',
   'cmd.help': 'Помощь',
 
-  welcome: '🎮 <b>Game Club</b>\n\nЗдравствуйте, {name}! Здесь можно смотреть билеты, получать QR-код, отменять бронь и управлять своими данными.\n\nВыберите в меню ниже 👇',
+  welcome: '🎮 <b>Zonup</b>\n\nЗдравствуйте, {name}! Здесь можно смотреть билеты, получать QR-код, отменять бронь и управлять своими данными.\n\nВыберите в меню ниже 👇',
   'no_account': 'Ваш номер ({phone}) привязан, но аккаунта с этим номером ещё нет.\nВойдите на сайте или в приложении с этим номером — после этого билеты появятся здесь.',
   'rate_limited': 'Слишком много запросов. Попробуйте через минуту.',
   error: 'Произошла ошибка. Попробуйте чуть позже.',
@@ -232,7 +232,7 @@ const ru: Record<BotKey, string> = {
   'settings.choose_lang': 'Выберите язык:',
   'settings.lang_changed': '✅ Язык изменён.',
 
-  help: '❓ <b>Помощь</b>\n\n🎟 <b>Мои билеты</b> — активные брони, QR-код, отмена\n📜 <b>История</b> — прошлые брони\n👤 <b>Профиль</b> — ваши данные, статистика, избранное\n🔔 <b>Уведомления</b> — последние сообщения\n⚙️ <b>Настройки</b> — язык и сообщения\n\nКоманды: /tickets /history /profile /notifications /settings\n\nКод входа тоже приходит в этот бот. Никому его не сообщайте — сотрудники Game Club никогда его не спрашивают.',
+  help: '❓ <b>Помощь</b>\n\n🎟 <b>Мои билеты</b> — активные брони, QR-код, отмена\n📜 <b>История</b> — прошлые брони\n👤 <b>Профиль</b> — ваши данные, статистика, избранное\n🔔 <b>Уведомления</b> — последние сообщения\n⚙️ <b>Настройки</b> — язык и сообщения\n\nКоманды: /tickets /history /profile /notifications /settings\n\nКод входа тоже приходит в этот бот. Никому его не сообщайте — сотрудники Zonup никогда его не спрашивают.',
 
   'status.PENDING_PAYMENT': '⏳ Ожидает оплаты',
   'status.CONFIRMED': '✅ Подтверждена',
@@ -265,7 +265,7 @@ const en: Record<BotKey, string> = {
   'cmd.settings': 'Language and notifications',
   'cmd.help': 'Help',
 
-  welcome: '🎮 <b>Game Club</b>\n\nHi, {name}! Here you can view your tickets, get the QR code, cancel a booking and manage your data.\n\nPick from the menu below 👇',
+  welcome: '🎮 <b>Zonup</b>\n\nHi, {name}! Here you can view your tickets, get the QR code, cancel a booking and manage your data.\n\nPick from the menu below 👇',
   'no_account': 'Your number ({phone}) is linked, but there is no account with it yet.\nSign in on the website or app with this number — your tickets will then show up here.',
   'rate_limited': 'Too many requests. Please try again in a minute.',
   error: 'Something went wrong. Please try again shortly.',
@@ -355,7 +355,7 @@ const en: Record<BotKey, string> = {
   'settings.choose_lang': 'Choose a language:',
   'settings.lang_changed': '✅ Language changed.',
 
-  help: '❓ <b>Help</b>\n\n🎟 <b>My tickets</b> — active bookings, QR code, cancellation\n📜 <b>History</b> — past bookings\n👤 <b>My profile</b> — your data, stats, favourite clubs\n🔔 <b>Notifications</b> — latest messages\n⚙️ <b>Settings</b> — language and messages\n\nCommands: /tickets /history /profile /notifications /settings\n\nYour sign-in code also comes to this bot. Never share it — Game Club staff will never ask for it.',
+  help: '❓ <b>Help</b>\n\n🎟 <b>My tickets</b> — active bookings, QR code, cancellation\n📜 <b>History</b> — past bookings\n👤 <b>My profile</b> — your data, stats, favourite clubs\n🔔 <b>Notifications</b> — latest messages\n⚙️ <b>Settings</b> — language and messages\n\nCommands: /tickets /history /profile /notifications /settings\n\nYour sign-in code also comes to this bot. Never share it — Zonup staff will never ask for it.',
 
   'status.PENDING_PAYMENT': '⏳ Awaiting payment',
   'status.CONFIRMED': '✅ Confirmed',

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
-import { CancellationPolicy, policyFrom, refundPercent } from '../../common/domain/price-engine';
+import { CancellationPolicy, PackageInput, packageAllowsStart, policyFrom, PriceResult, refundPercent } from '../../common/domain/price-engine';
 import { bestGroup } from '../../common/domain/seat-groups';
 import { isWithinHours, openIntervals, WorkingHours } from '../../common/domain/working-hours';
 import { AppException } from '../../common/errors';
@@ -26,6 +26,14 @@ import { PricingService, PromoResult } from './pricing.service';
 type Tx = Prisma.TransactionClient;
 export const LIVE_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'ACTIVE'];
 const EXCLUSION = /booking_items_no_overlap|23P01|conflicting key value violates exclusion constraint/;
+/** Kesishuvchi oraliqlarni parallel yozishda exclusion constraint deadlock berishi mumkin — bu ham konflikt. */
+const DEADLOCK = /40P01|deadlock detected/;
+const SESSION_BUSY = ['WAITING', 'ACTIVE', 'PAUSED'];
+
+/** Jonli sessiya `start` dan boshlanadigan oraliqni band qiladimi: pauza yoki tugash vaqtisiz — doim; aks holda tugashigacha. busy() va slots() uchun yagona qoida. */
+function sessionBlocks(s: { status: string; expected_end_at: Date | null }, start: number) {
+  return s.status === 'PAUSED' || !s.expected_end_at || s.expected_end_at.getTime() > start;
+}
 
 export interface Caller {
   id: string;
@@ -33,6 +41,11 @@ export interface Caller {
 }
 
 export type BranchCtx = Awaited<ReturnType<BookingsService['branchCtx']>>;
+
+/** price_breakdown'ga paket ma'lumoti (JSON — BigInt emas). */
+export function packageBreakdown(q: PriceResult) {
+  return q.package ? { package: { id: q.package.id, name: q.package.name, duration_minutes: q.package.duration_minutes, regular_amount: Number(q.package.regular_amount) } } : {};
+}
 
 /** Bron yaratilgan paytdagi siyosat (price_snapshot) — klub keyin o'zgartirsa ham mijozga ko'rsatilgani amal qiladi. */
 function bookingPolicy(b: { price_snapshot: Prisma.JsonValue | null }, current: CancellationPolicy): CancellationPolicy {
@@ -132,11 +145,11 @@ export class BookingsService {
       select: { device_id: true, booking: { select: { status: true } } },
     });
     const sessions = await tx.sessions.findMany({
-      where: { device_id: { in: deviceIds }, status: { in: ['WAITING', 'ACTIVE', 'PAUSED'] }, ...(excludeBookingId ? { booking_id: { not: excludeBookingId } } : {}) },
+      where: { device_id: { in: deviceIds }, status: { in: SESSION_BUSY }, ...(excludeBookingId ? { booking_id: { not: excludeBookingId } } : {}) },
       select: { device_id: true, expected_end_at: true, status: true },
     });
     const reserved = new Set(items.map((i) => i.device_id));
-    const occupied = new Set(sessions.filter((s) => s.status === 'PAUSED' || !s.expected_end_at || s.expected_end_at > start).map((s) => s.device_id));
+    const occupied = new Set(sessions.filter((s) => sessionBlocks(s, start.getTime())).map((s) => s.device_id));
     return { reserved, occupied };
   }
 
@@ -144,8 +157,11 @@ export class BookingsService {
 
   async availability(branchId: string, q: AvailabilityQuery) {
     const ctx = await this.branchCtx(branchId, { requireActive: true });
+    const tariffs = await this.pricing.tariffs(branchId);
+    const pkg = q.package_id ? this.pricing.findPackage(tariffs, q.package_id) : null;
+    const duration = pkg?.duration_minutes ?? q.duration;
     const start = new Date(q.start_at);
-    const end = new Date(start.getTime() + q.duration * 60_000);
+    const end = new Date(start.getTime() + duration * 60_000);
     const within = isWithinHours(ctx.branch.working_hours as WorkingHours, ctx.exceptions, ctx.branch.timezone, start, end);
     const devices = await this.prisma.devices.findMany({
       where: {
@@ -157,13 +173,13 @@ export class BookingsService {
     });
     const blockedEnd = new Date(end.getTime() + ctx.settings.buffer_minutes * 60_000);
     const { reserved, occupied } = await this.busy(this.prisma, devices.map((d) => d.id), start, blockedEnd);
-    const tariffs = await this.pricing.tariffs(branchId);
     const result = devices.map((d) => {
       const status = d.operational_status !== 'ACTIVE' || !within ? 'UNAVAILABLE' : occupied.has(d.id) ? 'OCCUPIED' : reserved.has(d.id) ? 'RESERVED' : 'AVAILABLE';
-      const pq = this.pricing.tryQuote(tariffs, d, start, end, ctx.branch.timezone);
+      // Paket tanlangan bo'lsa: paket amal qilmaydigan qurilmada narx yo'q (tanlab bo'lmaydi)
+      const pq = this.pricing.tryQuote(tariffs, d, start, end, ctx.branch.timezone, pkg);
       return {
         id: d.id, name: d.name, type: d.type, specs: d.specs, room: d.room, category: d.category, layout: d.layout, status,
-        price_quote: pq ? { amount: pq.amount, tariff_id: pq.tariff_id, tariff_name: pq.tariff_name, segments: pq.segments } : null,
+        price_quote: pq ? { amount: pq.amount, tariff_id: pq.tariff_id, tariff_name: pq.tariff_name, segments: pq.segments, regular_amount: pq.package?.regular_amount ?? null } : null,
       };
     });
     const cats = new Map<string, { category_id: string; name: string; available_count: number; price_from: bigint | null }>();
@@ -207,12 +223,13 @@ export class BookingsService {
       hold_minutes: ctx.settings.hold_minutes,
       devices: result,
       categories: [...cats.values()],
-      suggested_slots: anyFree ? [] : await this.suggest(ctx, devices.map((d) => d.id), start, q.duration),
+      package: pkg ? this.pricing.packageSnapshot(pkg) : null,
+      suggested_slots: anyFree ? [] : await this.suggest(ctx, devices.map((d) => d.id), start, duration, pkg),
     };
   }
 
   /** Bo'sh joy yo'q bo'lsa eng yaqin 3 ta muqobil vaqt (§6.8). */
-  private async suggest(ctx: BranchCtx, deviceIds: string[], start: Date, duration: number) {
+  private async suggest(ctx: BranchCtx, deviceIds: string[], start: Date, duration: number, pkg: PackageInput | null = null) {
     const out: { start_at: string; available_count: number }[] = [];
     const step = ctx.settings.slot_minutes * 60_000;
     for (let k = 1; k <= 24 && out.length < 3; k++) {
@@ -220,6 +237,7 @@ export class BookingsService {
       const e = new Date(s.getTime() + duration * 60_000);
       if (s.getTime() > Date.now() + ctx.settings.max_advance_days * 86400_000) break;
       if (!isWithinHours(ctx.branch.working_hours as WorkingHours, ctx.exceptions, ctx.branch.timezone, s, e)) continue;
+      if (pkg && !packageAllowsStart(pkg, s, ctx.branch.timezone)) continue;
       const { reserved, occupied } = await this.busy(this.prisma, deviceIds, s, new Date(e.getTime() + ctx.settings.buffer_minutes * 60_000));
       const free = deviceIds.filter((id) => !reserved.has(id) && !occupied.has(id)).length;
       if (free > 0) out.push({ start_at: s.toISOString(), available_count: free });
@@ -231,6 +249,8 @@ export class BookingsService {
   async slots(branchId: string, q: SlotsQuery) {
     const ctx = await this.branchCtx(branchId, { requireActive: true });
     const tz = ctx.branch.timezone;
+    const pkg = q.package_id ? this.pricing.findPackage(await this.pricing.tariffs(branchId), q.package_id) : null;
+    const duration = pkg?.duration_minutes ?? q.duration;
     const dayStart = DateTime.fromISO(q.date, { zone: tz }).startOf('day');
     const dayEnd = dayStart.plus({ days: 1 });
     const own = q.exclude_booking_id ? await this.prisma.booking_items.findMany({ where: { booking_id: q.exclude_booking_id, active: true, booking: { branch_id: branchId } }, select: { device_id: true } }) : null;
@@ -241,25 +261,26 @@ export class BookingsService {
     const ids = devices.map((d) => d.id);
     const items = await this.prisma.booking_items.findMany({
       where: {
-        device_id: { in: ids }, active: true, ...(q.exclude_booking_id ? { booking_id: { not: q.exclude_booking_id } } : {}), start_at: { lt: dayEnd.plus({ minutes: q.duration }).toJSDate() }, blocked_until: { gt: dayStart.toJSDate() },
+        device_id: { in: ids }, active: true, ...(q.exclude_booking_id ? { booking_id: { not: q.exclude_booking_id } } : {}), start_at: { lt: dayEnd.plus({ minutes: duration }).toJSDate() }, blocked_until: { gt: dayStart.toJSDate() },
         NOT: { booking: { status: 'PENDING_PAYMENT', hold_expires_at: { lte: new Date() } } },
       },
       select: { device_id: true, start_at: true, blocked_until: true },
     });
-    const sessions = await this.prisma.sessions.findMany({ where: { device_id: { in: ids }, status: { in: ['ACTIVE', 'PAUSED', 'WAITING'] } }, select: { device_id: true, expected_end_at: true } });
+    const sessions = await this.prisma.sessions.findMany({ where: { device_id: { in: ids }, status: { in: SESSION_BUSY } }, select: { device_id: true, expected_end_at: true, status: true } });
     const intervals = openIntervals(ctx.branch.working_hours as WorkingHours, ctx.exceptions, tz, dayStart.toJSDate(), dayEnd.toJSDate());
     const step = ctx.settings.slot_minutes;
     const now = Date.now() + ctx.settings.min_advance_minutes * 60_000;
     const out: { start_at: string; available_count: number }[] = [];
     for (let t = dayStart; t < dayEnd; t = t.plus({ minutes: step })) {
       const s = t.toMillis();
-      const e = s + q.duration * 60_000;
+      const e = s + duration * 60_000;
       if (s < now) continue;
+      if (pkg && !packageAllowsStart(pkg, new Date(s), tz)) continue;
       if (!intervals.some(([a, b]) => a <= s && e <= b)) continue;
       const blocked = e + ctx.settings.buffer_minutes * 60_000;
       const busy = new Set([
         ...items.filter((i) => i.start_at.getTime() < blocked && i.blocked_until.getTime() > s).map((i) => i.device_id),
-        ...sessions.filter((x) => !x.expected_end_at || x.expected_end_at.getTime() > s).map((x) => x.device_id),
+        ...sessions.filter((x) => sessionBlocks(x, s)).map((x) => x.device_id),
       ]);
       out.push({ start_at: new Date(s).toISOString(), available_count: ids.filter((id) => !busy.has(id)).length });
     }
@@ -274,8 +295,11 @@ export class BookingsService {
     const source = dto.source === 'PHONE' && staff ? 'PHONE' : dto.source === 'WEB' ? 'WEB' : 'APP';
     const isPhone = source === 'PHONE';
     if (!(await this.entitlements.canAcceptBookings(ctx.club.id))) throw new AppException('CLUB_NOT_ACTIVE', 'Club subscription is not active');
+    const tariffs = await this.pricing.tariffs(ctx.branch.id);
+    const pkg = dto.package_id ? this.pricing.findPackage(tariffs, dto.package_id) : null;
+    const duration = pkg?.duration_minutes ?? dto.duration_minutes;
     const start = new Date(dto.start_at);
-    const end = this.validateTime(ctx, start, dto.duration_minutes, isPhone);
+    const end = this.validateTime(ctx, start, duration, isPhone);
     const customerId = isPhone ? null : caller.id;
 
     if (customerId) {
@@ -297,7 +321,6 @@ export class BookingsService {
       throw new AppException('VALIDATION_ERROR', 'Duplicate devices', { field: 'items' });
     }
 
-    const tariffs = await this.pricing.tariffs(ctx.branch.id);
     const blockedEnd = new Date(end.getTime() + ctx.settings.buffer_minutes * 60_000);
     const tried = new Set<string>();
 
@@ -323,7 +346,7 @@ export class BookingsService {
             tried.add(d.id);
             return { device: d, requested_category_id: it.category_id! };
           });
-          const quotes = chosen.map((c) => ({ ...c, q: this.pricing.quoteDevice(tariffs, c.device, start, end, ctx.branch.timezone) }));
+          const quotes = chosen.map((c) => ({ ...c, q: this.pricing.quoteDevice(tariffs, c.device, start, end, ctx.branch.timezone, pkg) }));
           const subtotal = quotes.reduce((s, x) => s + x.q.amount, 0n);
           let promo: PromoResult | null = null;
           if (dto.promo_code) {
@@ -341,13 +364,14 @@ export class BookingsService {
           const b = await tx.bookings.create({
             data: {
               id, code: bookingCode(), customer_id: customerId, guest_name: dto.guest_name, guest_phone: dto.guest_phone, club_id: ctx.club.id, branch_id: ctx.branch.id,
-              source, status, start_at: start, end_at: end, duration_minutes: dto.duration_minutes, subtotal_amount: subtotal, discount_amount: discount, total_amount: total,
+              source, status, start_at: start, end_at: end, duration_minutes: duration, subtotal_amount: subtotal, discount_amount: discount, total_amount: total,
               payment_status: total === 0n ? 'PAID' : 'UNPAID', promotion_id: promo?.promotion_id,
               hold_expires_at: status === 'PENDING_PAYMENT' ? new Date(Date.now() + ctx.settings.hold_minutes * 60_000) : null,
               notes: dto.notes, idempotency_key: idempotencyKey ?? null,
               price_snapshot: {
                 promo: promo ? { code: promo.code, discount: Number(discount), funded_by: promo.funded_by } : null,
                 payment_mode: payLater ? 'AT_CLUB' : 'ONLINE',
+                package: pkg ? this.pricing.packageSnapshot(pkg) : null,
                 cancellation_policy: ctx.policy as unknown as Prisma.InputJsonValue,
               },
             },
@@ -356,7 +380,7 @@ export class BookingsService {
             data: quotes.map((x) => ({
               id: uuidv7(), booking_id: id, club_id: ctx.club.id, branch_id: ctx.branch.id, device_id: x.device.id, category_id: x.device.category_id,
               requested_category_id: x.requested_category_id, start_at: start, end_at: end, blocked_until: blockedEnd, active: true, price_amount: x.q.amount,
-              tariff_id: x.q.tariff_id, price_breakdown: { segments: x.q.segments, rounding: 'CEIL', currency: 'UZS' } as unknown as Prisma.InputJsonValue,
+              tariff_id: x.q.tariff_id, price_breakdown: { segments: x.q.segments, rounding: 'CEIL', currency: 'UZS', ...packageBreakdown(x.q) } as unknown as Prisma.InputJsonValue,
             })),
           });
           if (promo) {
@@ -379,6 +403,11 @@ export class BookingsService {
         }
         if (EXCLUSION.test(String((e as Error).message))) {
           if (dto.items.some((i) => !i.device_id) && attempt < 2) continue;
+          throw new AppException('BOOKING_SLOT_TAKEN', 'This time slot was just taken');
+        }
+        // Deadlock qurboni: raqib tranzaksiya yakunlangach qayta tekshiramiz (band bo'lsa — BOOKING_SLOT_TAKEN)
+        if (DEADLOCK.test(String((e as Error).message))) {
+          if (attempt < 2) continue;
           throw new AppException('BOOKING_SLOT_TAKEN', 'This time slot was just taken');
         }
         if ((e as { code?: string }).code === 'P2002' && idempotencyKey) {
@@ -427,6 +456,10 @@ export class BookingsService {
       items: b.items.map((i) => ({ ...i, device: byId.get(i.device_id) ?? null })),
       payments,
       session,
+      // Paketli bron: bron paytidagi paket shartlari (snapshot)
+      package: (b.price_snapshot as { package?: unknown } | null)?.package ?? null,
+      // VIP (ochiq vaqt): tugash vaqti yo'q, summa yakunda hisoblanadi
+      is_open: !!session?.is_open,
       review: review ? { ...review, can_edit: Date.now() - review.created_at.getTime() <= 24 * 3600_000 } : null,
       // O'tkazma tekshirilayotganda mijoz bekor qila olmaydi (pul yo'lda — avval klub tasdiqlaydi yoki rad etadi)
       can_cancel: cancellable && !pendingTransfer,
@@ -458,19 +491,23 @@ export class BookingsService {
   async list(q: BookingListQuery, caller: Caller) {
     const staffMode = q.staff === 'true';
     const now = new Date();
-    let where: Prisma.bookingsWhereInput;
+    // Shartlar AND bilan: scope (OR), qidiruv (OR) va PAST (OR) bir-birini almashtirib yubormasin
+    const and: Prisma.bookingsWhereInput[] = [];
     if (staffMode) {
       const f = scopeFilter(caller.grants, 'bookings.view');
       if (!f.platform && !f.clubIds.length && !f.branchIds.length) throw new AppException('FORBIDDEN', 'Permission denied');
-      where = { ...scopeWhere(f), ...(q.club_id ? { club_id: q.club_id } : {}), ...(q.branch_id ? { branch_id: q.branch_id } : {}) } as Prisma.bookingsWhereInput;
-      if (q.q) where.OR = [{ code: { contains: q.q.toUpperCase() } }, { guest_name: { contains: q.q, mode: 'insensitive' } }, { guest_phone: { contains: q.q } }];
+      and.push(scopeWhere(f) as Prisma.bookingsWhereInput);
+      if (q.club_id) and.push({ club_id: q.club_id });
+      if (q.branch_id) and.push({ branch_id: q.branch_id });
+      if (q.q) and.push({ OR: [{ code: { contains: q.q.toUpperCase() } }, { guest_name: { contains: q.q, mode: 'insensitive' } }, { guest_phone: { contains: q.q } }] });
     } else {
-      where = { customer_id: caller.id };
+      and.push({ customer_id: caller.id });
     }
-    if (q.status === 'UPCOMING') where = { ...where, status: { in: LIVE_STATUSES }, end_at: { gt: now } };
-    else if (q.status === 'PAST') where = { ...where, OR: [{ status: { in: ['COMPLETED', 'CANCELLED', 'EXPIRED', 'NO_SHOW'] } }, { end_at: { lte: now } }] };
-    else if (q.status) where = { ...where, status: q.status };
-    if (q.from || q.to) where = { ...where, start_at: { ...(q.from ? { gte: new Date(q.from) } : {}), ...(q.to ? { lt: new Date(q.to) } : {}) } };
+    if (q.status === 'UPCOMING') and.push({ status: { in: LIVE_STATUSES }, end_at: { gt: now } });
+    else if (q.status === 'PAST') and.push({ OR: [{ status: { in: ['COMPLETED', 'CANCELLED', 'EXPIRED', 'NO_SHOW'] } }, { end_at: { lte: now } }] });
+    else if (q.status) and.push({ status: q.status });
+    if (q.from || q.to) and.push({ start_at: { ...(q.from ? { gte: new Date(q.from) } : {}), ...(q.to ? { lt: new Date(q.to) } : {}) } });
+    const where: Prisma.bookingsWhereInput = { AND: and };
     const [rows, total] = await Promise.all([
       this.prisma.bookings.findMany({
         where,
@@ -570,12 +607,24 @@ export class BookingsService {
   async reschedule(id: string, caller: Caller, dto: RescheduleDto) {
     const { booking: b, staff } = await this.loadFor(id, caller, 'bookings.reschedule');
     if (!['PENDING_PAYMENT', 'CONFIRMED'].includes(b.status)) throw new AppException('CONFLICT', `Cannot reschedule a ${b.status} booking`);
+    // Muddati o'tgan hold (sweeper hali EXPIRED qilmagan bo'lsa ham) ko'chirilmaydi
+    if (b.status === 'PENDING_PAYMENT' && b.hold_expires_at && b.hold_expires_at <= new Date()) throw new AppException('BOOKING_HOLD_EXPIRED', 'Booking hold has expired');
     if (!staff && b.reschedule_count >= 2) throw new AppException('CONFLICT', 'Reschedule limit reached', { reason: 'LIMIT' });
     if (!staff && b.start_at.getTime() - Date.now() < 60 * 60_000) throw new AppException('CONFLICT', 'Too late to reschedule', { reason: 'TOO_LATE' });
     const ctx = await this.branchCtx(b.branch_id, { requireActive: true });
     const start = new Date(dto.start_at);
-    const duration = dto.duration_minutes ?? b.duration_minutes;
+    // Paketli bron snapshot'dagi paket bilan qoladi: davomiylik qat'iy, narx snapshot narxi
+    const pkg = this.pricing.packageFromSnapshot(b.price_snapshot);
+    if (pkg && dto.duration_minutes != null && dto.duration_minutes !== pkg.duration_minutes) {
+      throw new AppException('VALIDATION_ERROR', 'Package booking duration cannot be changed', { field: 'duration_minutes', reason: 'PACKAGE_DURATION' });
+    }
+    const duration = pkg?.duration_minutes ?? dto.duration_minutes ?? b.duration_minutes;
     const end = this.validateTime(ctx, start, duration, staff);
+    if (b.customer_id) {
+      // Bir mijozning bir vaqtga ikki broni bo'lmaydi (yaratishdagi qoida, §6.9)
+      const overlap = await this.prisma.bookings.count({ where: { id: { not: id }, customer_id: b.customer_id, status: { in: LIVE_STATUSES }, start_at: { lt: end }, end_at: { gt: start }, NOT: { status: 'PENDING_PAYMENT', hold_expires_at: { lte: new Date() } } } });
+      if (overlap) throw new AppException('CONFLICT', 'You already have a booking at this time', { reason: 'OVERLAP' });
+    }
     const blockedEnd = new Date(end.getTime() + ctx.settings.buffer_minutes * 60_000);
     const items = await this.prisma.booking_items.findMany({ where: { booking_id: id } });
     if (dto.device_id && items.length !== 1) throw new AppException('VALIDATION_ERROR', 'device_id can only be changed for single-device bookings', { field: 'device_id' });
@@ -591,11 +640,11 @@ export class BookingsService {
         let subtotal = 0n;
         for (const [i, item] of items.entries()) {
           const device = devices.find((d) => d.id === (dto.device_id ?? item.device_id))!;
-          const q = this.pricing.quoteDevice(tariffs, device, start, end, ctx.branch.timezone);
+          const q = this.pricing.quoteDevice(tariffs, device, start, end, ctx.branch.timezone, pkg);
           subtotal += q.amount;
           await tx.booking_items.update({
             where: { id: item.id },
-            data: { device_id: device.id, start_at: start, end_at: end, blocked_until: blockedEnd, price_amount: q.amount, tariff_id: q.tariff_id, price_breakdown: { segments: q.segments } as unknown as Prisma.InputJsonValue },
+            data: { device_id: device.id, start_at: start, end_at: end, blocked_until: blockedEnd, price_amount: q.amount, tariff_id: q.tariff_id, price_breakdown: { segments: q.segments, ...packageBreakdown(q) } as unknown as Prisma.InputJsonValue },
           });
           void i;
         }
@@ -608,7 +657,7 @@ export class BookingsService {
         await tx.booking_events.create({ data: { id: uuidv7(), booking_id: id, type: 'RESCHEDULED', actor_id: caller.id, data: { from: b.start_at.toISOString(), to: start.toISOString(), device_id: dto.device_id ?? null } } });
       });
     } catch (e) {
-      if (EXCLUSION.test(String((e as Error).message))) throw new AppException('BOOKING_SLOT_TAKEN', 'The new time is not available');
+      if (EXCLUSION.test(String((e as Error).message)) || DEADLOCK.test(String((e as Error).message))) throw new AppException('BOOKING_SLOT_TAKEN', 'The new time is not available');
       throw e;
     }
     const d = await this.detail(id);

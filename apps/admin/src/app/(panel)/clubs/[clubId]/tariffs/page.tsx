@@ -9,7 +9,7 @@ import { Alert, Badge, Button, Card, Field, Input, Select, cx } from "@/componen
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { useMyClub } from "@/lib/my-club";
 import { session, useAuth } from "@/lib/session";
-import { DEVICE_TYPES, type Device, type DeviceCategory, type Quote, RULE_KINDS, type Room, type Tariff, type TariffRule } from "@/lib/types";
+import { DEVICE_TYPES, type Device, type DeviceCategory, type Quote, RULE_KINDS, type Room, type Tariff, type TariffPackage, type TariffRule } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 
 const DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
@@ -128,6 +128,26 @@ function BranchTariffs({ branchId }: { branchId: string }) {
                   ))}
                 </ul>
               )}
+              {!!tr.packages?.length && (
+                <div className="space-y-1">
+                  <div className="text-xs font-bold uppercase tracking-wide text-muted">{t("pkg.title")}</div>
+                  <ul className="space-y-1 text-sm">
+                    {tr.packages.map((p) => (
+                      <li key={p.id} className={cx("flex flex-wrap justify-between gap-2 rounded-lg bg-surface-2 px-3 py-2", !p.is_active && "opacity-60")}>
+                        <span>
+                          <Badge tone="violet">{durationLabel(p.duration_minutes, t)}</Badge> <span className="ml-1 font-semibold">{p.name}</span>{" "}
+                          <span className="text-xs text-muted">{packageWhen(p, t)}</span>
+                          {!p.is_active && <span className="ml-1 text-xs text-muted">· {t("tariff.inactive")}</span>}
+                        </span>
+                        <span className="text-right">
+                          <span className="font-semibold tabular-nums">{formatMoney(p.price, locale)}</span>
+                          <Savings regular={regularAmount(tr.price_per_hour, p.duration_minutes)} price={p.price} />
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {(tr.min_minutes || tr.max_minutes) && (
                 <div className="text-xs text-muted">
                   {tr.min_minutes ? t("tariff.minN", { n: tr.min_minutes }) : ""} {tr.max_minutes ? t("tariff.maxN", { n: tr.max_minutes }) : ""}
@@ -154,7 +174,7 @@ function BranchTariffs({ branchId }: { branchId: string }) {
           ),
         )}
       </div>
-      <PriceCalculator branchId={branchId} devices={refs.devices} />
+      <PriceCalculator branchId={branchId} devices={refs.devices} packages={(tariffs.data ?? []).filter((tr) => tr.is_active).flatMap((tr) => (tr.packages ?? []).filter((p) => p.is_active))} />
     </div>
   );
 }
@@ -167,9 +187,35 @@ function daysLabel(days: number[], t: (k: never) => string) {
   return days.map((d) => t(`day.${d}` as never)).join(", ");
 }
 
+/** Oddiy narx (tejashni ko'rsatish uchun, tarif oynalarisiz) — API `regular_amount` bilan bir xil: ceil(soatlik × daq / 60). */
+const regularAmount = (perHour: number, minutes: number) => Math.ceil((perHour * minutes) / 60);
+
+function durationLabel(minutes: number, t: (k: never, v?: Record<string, string | number>) => string) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (!m) return t("pkg.hours" as never, { n: h });
+  if (!h) return t("pkg.minutes" as never, { n: m });
+  return t("pkg.hoursMinutes" as never, { h, m });
+}
+
+/** Paket qachon amal qiladi: kunlar + oyna. */
+function packageWhen(p: Pick<TariffPackage, "days_of_week" | "start_time" | "end_time">, t: (k: never, v?: Record<string, string | number>) => string) {
+  const days = p.days_of_week.length ? daysLabel(p.days_of_week, t) : t("tariff.days.all" as never);
+  return p.start_time && p.end_time ? `${days}, ${t("pkg.startBetween" as never, { from: p.start_time, to: p.end_time })}` : days;
+}
+
+function Savings({ regular, price }: { regular: number; price: number }) {
+  const { t, locale } = useI18n();
+  if (regular <= price) return null;
+  return <span className="block text-xs font-semibold text-accent">{t("pkg.save", { amount: formatMoney(regular - price, locale) })}</span>;
+}
+
 type Refs = { categories: DeviceCategory[]; rooms: Room[]; devices: Device[] };
 type Target = "all" | "type" | "category" | "room" | "device";
 type RuleDraft = Omit<TariffRule, "price_per_hour"> & { price: string };
+type PackageDraft = Omit<TariffPackage, "id" | "price" | "duration_minutes"> & { id?: string; price: string; hours: string; window: boolean };
+
+const PACKAGE_HOURS = [1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12] as const;
 
 function TariffForm({ tariff, refs, onSubmit, onCancel }: { tariff?: Tariff; refs: Refs; onSubmit: (b: Record<string, unknown>) => Promise<void>; onCancel: () => void }) {
   const { t } = useI18n();
@@ -184,16 +230,24 @@ function TariffForm({ tariff, refs, onSubmit, onCancel }: { tariff?: Tariff; ref
   const [rules, setRules] = useState<RuleDraft[]>(
     tariff?.rules.map((r) => ({ days_of_week: r.days_of_week, start_time: r.start_time, end_time: r.end_time, kind: r.kind, date: r.date?.slice(0, 10) ?? null, price: tiyinToSomInput(r.price_per_hour) })) ?? [],
   );
+  const [packages, setPackages] = useState<PackageDraft[]>(
+    tariff?.packages?.map((p) => ({
+      id: p.id, name: p.name, hours: String(p.duration_minutes / 60), price: tiyinToSomInput(p.price), days_of_week: p.days_of_week,
+      start_time: p.start_time, end_time: p.end_time, window: !!p.start_time, is_active: p.is_active,
+    })) ?? [],
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const setRule = (i: number, patch: Partial<RuleDraft>) => setRules((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const setPkg = (i: number, patch: Partial<PackageDraft>) => setPackages((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const base = parseSom(price);
     const ruleRows = rules.map((r) => ({ ...r, price_per_hour: parseSom(r.price) }));
-    if (base === null || ruleRows.some((r) => r.price_per_hour === null)) {
+    const pkgRows = packages.map((p) => ({ ...p, priceTiyin: parseSom(p.price) }));
+    if (base === null || ruleRows.some((r) => r.price_per_hour === null) || pkgRows.some((p) => p.priceTiyin === null)) {
       setError(t("tariff.badPrice"));
       return;
     }
@@ -216,6 +270,16 @@ function TariffForm({ tariff, refs, onSubmit, onCancel }: { tariff?: Tariff; ref
       ...(minM && { min_minutes: Number(minM) }),
       ...(maxM && { max_minutes: Number(maxM) }),
       rules: ruleRows.map((r) => ({ days_of_week: r.days_of_week, start_time: r.start_time, end_time: r.end_time, kind: r.kind, price_per_hour: r.price_per_hour, ...(r.date && { date: r.date }) })),
+      packages: pkgRows.map((p) => ({
+        ...(p.id && { id: p.id }),
+        name: p.name.trim(),
+        duration_minutes: Math.round(Number(p.hours) * 60),
+        price: p.priceTiyin,
+        days_of_week: p.days_of_week,
+        start_time: p.window ? p.start_time : null,
+        end_time: p.window ? p.end_time : null,
+        is_active: p.is_active,
+      })),
     };
     await onSubmit(Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)));
     setBusy(false);
@@ -327,6 +391,79 @@ function TariffForm({ tariff, refs, onSubmit, onCancel }: { tariff?: Tariff; ref
         ))}
       </div>
 
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-bold">{t("pkg.title")}</div>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => setPackages((ps) => [...ps, { name: t("pkg.hours", { n: 3 }), hours: "3", price: "", days_of_week: [], start_time: "22:00", end_time: "08:00", window: false, is_active: true }])}
+          >
+            {t("pkg.add")}
+          </Button>
+        </div>
+        <p className="text-xs text-muted">{t("pkg.hint")}</p>
+        {packages.map((p, i) => {
+          const tiyin = parseSom(p.price);
+          const basePrice = parseSom(price);
+          return (
+            <div key={p.id ?? `new-${i}`} className="space-y-2 rounded-xl bg-surface-2 p-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <Input className="h-10 w-40" value={p.name} onChange={(e) => setPkg(i, { name: e.target.value })} placeholder={t("pkg.namePlaceholder")} maxLength={60} required aria-label={t("pkg.name")} />
+                <Select className="h-10" value={p.hours} onChange={(e) => setPkg(i, { hours: e.target.value })} aria-label={t("pkg.duration")}>
+                  {PACKAGE_HOURS.map((h) => (
+                    <option key={h} value={String(h)}>
+                      {durationLabel(h * 60, t)}
+                    </option>
+                  ))}
+                </Select>
+                <Input className="h-10 w-32" inputMode="numeric" placeholder={t("pkg.pricePlaceholder")} value={p.price} onChange={(e) => setPkg(i, { price: e.target.value })} required aria-label={t("pkg.price")} />
+                <label className="flex h-10 items-center gap-1.5 text-xs font-semibold text-muted">
+                  <input type="checkbox" checked={p.is_active} onChange={(e) => setPkg(i, { is_active: e.target.checked })} />
+                  {t("pkg.active")}
+                </label>
+                <button type="button" className="pb-2 text-sm text-danger-soft" onClick={() => setPackages((ps) => ps.filter((_, j) => j !== i))}>
+                  {t("common.delete")}
+                </button>
+              </div>
+              {tiyin !== null && basePrice !== null && <Savings regular={regularAmount(basePrice, Number(p.hours) * 60)} price={tiyin} />}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-xs text-muted">{t("pkg.days")}</span>
+                {DAYS.map((d) => {
+                  const on = p.days_of_week.includes(d);
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setPkg(i, { days_of_week: on ? p.days_of_week.filter((x) => x !== d) : [...p.days_of_week, d].sort() })}
+                      className={cx("h-8 w-10 rounded-lg text-xs font-bold", on ? "bg-accent text-on-accent" : "border border-line text-muted")}
+                    >
+                      {t(`day.${d}` as never)}
+                    </button>
+                  );
+                })}
+                {!p.days_of_week.length && <span className="text-xs text-muted">— {t("tariff.days.all")}</span>}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-muted">
+                  <input type="checkbox" checked={p.window} onChange={(e) => setPkg(i, { window: e.target.checked })} />
+                  {t("pkg.window")}
+                </label>
+                {p.window && (
+                  <>
+                    <Input className="h-9 w-28" type="time" value={p.start_time ?? ""} onChange={(e) => setPkg(i, { start_time: e.target.value })} required />
+                    <span className="text-muted">—</span>
+                    <Input className="h-9 w-28" type="time" value={p.end_time ?? ""} onChange={(e) => setPkg(i, { end_time: e.target.value })} required />
+                  </>
+                )}
+              </div>
+              {p.window && <p className="text-xs text-muted">{t("pkg.windowHint")}</p>}
+            </div>
+          );
+        })}
+      </div>
+
       <div className="flex gap-2">
         <Button type="submit" loading={busy}>
           {t("common.save")}
@@ -340,7 +477,7 @@ function TariffForm({ tariff, refs, onSubmit, onCancel }: { tariff?: Tariff; ref
 }
 
 /** Narx kalkulyatori: POST /branches/:id/price-quote (PriceEngine). */
-function PriceCalculator({ branchId, devices }: { branchId: string; devices: Device[] }) {
+function PriceCalculator({ branchId, devices, packages }: { branchId: string; devices: Device[]; packages: TariffPackage[] }) {
   const { t, locale } = useI18n();
   const errorText = useErrorText();
   const [deviceId, setDeviceId] = useState("");
@@ -350,6 +487,7 @@ function PriceCalculator({ branchId, devices }: { branchId: string; devices: Dev
     return now.toISOString().slice(0, 11) + String(now.getUTCHours()).padStart(2, "0") + ":00";
   });
   const [duration, setDuration] = useState("120");
+  const [packageId, setPackageId] = useState("");
   const [quote, setQuote] = useState<Quote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -366,6 +504,7 @@ function PriceCalculator({ branchId, devices }: { branchId: string; devices: Dev
         device_ids: [selected],
         start_at: new Date(`${start}:00${TASHKENT_OFFSET}`).toISOString(),
         duration_minutes: Number(duration),
+        ...(packageId && { package_id: packageId }),
       });
       setQuote(res.data);
     } catch (err) {
@@ -397,8 +536,20 @@ function PriceCalculator({ branchId, devices }: { branchId: string; devices: Dev
           <Field label={t("quote.start")} hint="Asia/Tashkent">
             <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} required />
           </Field>
+          {packages.length > 0 && (
+            <Field label={t("pkg.title")}>
+              <Select value={packageId} onChange={(e) => setPackageId(e.target.value)}>
+                <option value="">{t("pkg.none")}</option>
+                {packages.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {formatMoney(p.price, locale)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <Field label={t("quote.duration")}>
-            <Select value={duration} onChange={(e) => setDuration(e.target.value)}>
+            <Select value={duration} onChange={(e) => setDuration(e.target.value)} disabled={!!packageId}>
               {[60, 120, 180, 240, 300, 360, 480, 600, 720].map((m) => (
                 <option key={m} value={m}>
                   {t("quote.hoursN", { n: m / 60 })}
@@ -421,12 +572,13 @@ function PriceCalculator({ branchId, devices }: { branchId: string; devices: Dev
                   <span className="font-mono text-xs">
                     {time(s.from)}–{time(s.to)}
                   </span>{" "}
-                  <span className="text-muted">{s.rule === "BASE" ? t("tariff.base") : t(`tariff.kind.${s.rule}` as never)}</span>
+                  <span className="text-muted">{s.rule === "BASE" ? t("tariff.base") : s.rule === "PACKAGE" ? (it.package?.name ?? t("pkg.title")) : t(`tariff.kind.${s.rule}` as never)}</span>
                 </span>
                 <span className="tabular-nums">{formatMoney(s.amount, locale)}</span>
               </div>
             )),
           )}
+          {quote.items.map((it) => it.package && <Savings key={`sv-${it.device_id}`} regular={it.package.regular_amount} price={it.amount} />)}
           {quote.discount > 0 && (
             <div className="flex justify-between text-muted">
               <span>{t("quote.discount")}</span>

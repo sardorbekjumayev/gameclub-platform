@@ -8,7 +8,7 @@ import { type Actor } from '../clubs/clubs.service';
 import { RbacService, type Grant } from '../rbac/rbac.service';
 import {
   AnnouncementDto, CreateReviewDto, CreateTicketDto, DeviceTokenDto, ModerateReviewDto, NotificationPrefsDto, NotificationQuery, PromotionDto, ReplyDto, ReviewListQuery,
-  StaffReviewQuery, TicketListQuery, TicketMessageDto, UpdatePromotionDto, UpdateReviewDto, UpdateTicketDto, ValidatePromoDto,
+  SocialSettingsDto, StaffReviewQuery, TicketListQuery, TicketMessageDto, UpdatePromotionDto, UpdateReviewDto, UpdateTicketDto, ValidatePromoDto,
 } from './engagement.dto';
 import { EngagementService } from './engagement.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -83,8 +83,12 @@ export class EngagementController {
 
   // ---- Support ----
   @Post('support/tickets')
-  createTicket(@Body() dto: CreateTicketDto, @CurrentUser() u: AuthUser) {
-    return this.svc.createTicket(u.id, dto);
+  async createTicket(@Body() dto: CreateTicketDto, @CurrentUser() u: AuthUser) {
+    return this.svc.createTicket(u.id, dto, await this.rbac.grants(u.id));
+  }
+  @Get('admin/support/stats') @RequirePermission('platform.tickets.manage') @ApiOperation({ summary: 'Javob kutayotgan / ochiq murojaatlar soni' })
+  ticketStats() {
+    return this.svc.ticketStats();
   }
   @Get('support/tickets') @ApiOperation({ summary: 'O\'z murojaatlarim; platforma xodimi ?all=true' })
   async tickets(@Query() q: TicketListQuery, @CurrentUser() u: AuthUser) {
@@ -171,6 +175,19 @@ export class EngagementController {
   @Post('clubs/:clubId/promotions') @RequirePermission('promotions.manage')
   createPromotion(@Param('clubId', uuid) id: string, @Body() dto: PromotionDto, @CurrentActor() a: Actor) {
     return this.svc.createPromotion(id, dto, a);
+  }
+  // ---- Ijtimoiy tarmoqlar (mijozlarga "obuna bo'ling" taklifi) ----
+  @Public() @Get('social') @ApiOperation({ summary: 'Platformaning ijtimoiy tarmoq havolalari va taklif bannerini ko\'rsatish' })
+  social() {
+    return this.svc.social();
+  }
+  @Get('admin/settings/social') @RequirePermission('platform.settings.manage')
+  adminSocial() {
+    return this.svc.social();
+  }
+  @Put('admin/settings/social') @RequirePermission('platform.settings.manage') @ApiOperation({ summary: 'Ijtimoiy tarmoq havolalari (bo\'sh — o\'chirish); audit' })
+  setSocial(@Body() dto: SocialSettingsDto, @CurrentActor() a: Actor) {
+    return this.svc.setSocial(dto, a);
   }
   @Get('admin/promotions') @RequirePermission('platform.settings.manage')
   platformPromotions(@Query() q: PageQuery) {

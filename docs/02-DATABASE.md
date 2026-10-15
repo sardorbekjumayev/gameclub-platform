@@ -65,7 +65,7 @@ Ustun ro'yxatida `*` = NOT NULL. Standart ustunlar (`id`, `created_at`, `updated
 **clubs**: `owner_id*`, `name*`, `slug* unique`, `logo_file_id`, `description`, `phone`, `telegram`, `instagram`, `website`, `rules text`, `amenities text[]`, `min_booking_minutes int`, `cancellation_policy jsonb` (§5), `transfer_card_number`, `transfer_card_holder` (mijoz o'tkazadigan karta; faqat to'lanmagan bron egasiga ko'rsatiladi), `status*`, `rejection_reason`, `approved_by`, `approved_at`, `suspended_reason`, `rating_avg numeric(3,2)`, `rating_count int`, `settings jsonb` (booking qoidalari), `deleted_at`.
 **club_documents** 🆕: `club_id*`, `type* (LICENSE|TAX_ID|PASSPORT|OTHER)`, `file_id*`, `status* (PENDING|APPROVED|REJECTED)`, `reviewed_by`, `note`.
 **club_members**: `club_id*`, `user_id*`, `title` — xodimlar ro'yxati (ruxsatlar `user_roles` da).
-**branches**: `club_id*`, `name*`, `slug*`, `address*`, `address_details jsonb`, `location geography(Point,4326)*`, `latitude`, `longitude` (yordamchi), `phone`, `description`, `timezone* default 'Asia/Tashkent'`, `working_hours jsonb*` (§5), `status*`, `booking_settings jsonb` (slot_minutes, buffer_minutes, min_advance_minutes, max_advance_days, hold_minutes, early_checkin_minutes, grace_minutes, allow_category_booking, allow_specific_device, auto_no_show), `rating_avg`, `rating_count`, `deleted_at`.
+**branches**: `club_id*`, `name*`, `slug*`, `address*`, `address_details jsonb`, `location geography(Point,4326)*`, `latitude`, `longitude` (yordamchi), `phone`, `description`, `timezone* default 'Asia/Tashkent'`, `working_hours jsonb*` (§5), `status*`, `booking_settings jsonb` (slot_minutes, buffer_minutes, min_advance_minutes, max_advance_days, hold_minutes, early_checkin_minutes, grace_minutes, allow_category_booking, allow_specific_device, auto_no_show, open_min_minutes, open_round_minutes), `rating_avg`, `rating_count`, `deleted_at`.
 **branch_hours_exceptions** 🆕: `branch_id*`, `date*`, `is_closed bool`, `open_time`, `close_time`, `reason`.
 **branch_images / files**: `files` jadvali orqali (§3.9), bog'lash `entity_type/entity_id/position`.
 **amenities** 🆕 (katalog): `code* unique`, `name_i18n jsonb`, `icon`. Klub/filialda `amenities text[]` shu kodlarni saqlaydi.
@@ -79,6 +79,7 @@ Ustun ro'yxatida `*` = NOT NULL. Standart ustunlar (`id`, `created_at`, `updated
 ### 3.4 Tariflar
 **tariffs**: `club_id*`, `branch_id*`, `name*`, `device_type`, `category_id`, `room_id`, `device_id` (aniq qurilma uchun), `price_per_hour*` (tiyin), `min_minutes`, `max_minutes`, `priority int default 0`, `is_active`, `valid_from date`, `valid_to date`, `deleted_at`.
 **tariff_rules**: `tariff_id*`, `days_of_week smallint[]*` (1–7), `start_time*`, `end_time*` (kesib o'tuvchi, masalan 22:00–08:00, ruxsat), `price_per_hour*` (shu oyna narxi), `kind (STANDARD|WEEKEND|NIGHT|HOLIDAY)`, `date` (bayram uchun aniq sana).
+**tariff_packages** 🆕 (2026-10-13): `tariff_id*` (FK, cascade), `club_id*`, `branch_id*` (scope), `name*` ("3 soat"), `duration_minutes*` (30–1440), `price*` (tiyin, butun paket narxi), `days_of_week smallint[] default {}` (bo'sh — har kuni), `start_time`, `end_time` (HH:mm, ikkalasi ham yoki hech biri; kesib o'tuvchi 22:00–08:00 ruxsat; null — istalgan vaqt), `is_active`, `position`, `deleted_at`. Index (tariff_id), (branch_id).
 **promotions** 🆕: `club_id` (null = platforma promosi), `code` unique, `type*`, `value*`, `max_discount_amount`, `min_order_amount`, `usage_limit`, `per_user_limit`, `used_count`, `starts_at`, `ends_at`, `applies_to jsonb` (branch_ids, device_types, weekdays), `funded_by* (CLUB|PLATFORM)`, `is_active`.
 **promotion_redemptions** 🆕: `promotion_id*`, `user_id*`, `booking_id*`, `discount_amount*`. Unique (promotion_id, booking_id).
 
@@ -104,7 +105,7 @@ Ustun ro'yxatida `*` = NOT NULL. Standart ustunlar (`id`, `created_at`, `updated
 **reviews**: `user_id*`, `club_id*`, `branch_id*`, `booking_id* unique`, `rating* (1–5)`, `text`, `status*`, `reply_text` 🆕 (klub javobi), `replied_at`, `moderated_by`, `moderation_note`.
 **review_images**: `review_id*`, `file_id*`.
 **favorites**: `user_id*`, `branch_id*` (spetsda "club" deyilgan; xarita markerlari filial bo'lgani uchun filial saqlanadi 🆕) — PK (user_id, branch_id).
-**support_tickets** 🆕: `user_id*`, `club_id`, `booking_id`, `type* (COMPLAINT|QUESTION|BUG|PAYMENT)`, `subject`, `status*`, `assigned_to`, `priority`.
+**support_tickets** 🆕: `user_id*`, `club_id`, `booking_id`, `type* (SUGGESTION|REQUEST|COMPLAINT|QUESTION|BUG|PAYMENT|OTHER)`, `subject`, `status*`, `assigned_to`, `priority`, `sender_role*` (yuborilgandagi rol), `awaiting_reply*` (oxirgi xabar egasidan), `last_message_at*`. Indeks: `(status, awaiting_reply, last_message_at desc)`.
 **support_messages** 🆕: `ticket_id*`, `sender_id*`, `body*`, `attachments jsonb`.
 
 ### 3.8 Bildirishnoma, obuna, sozlamalar, audit

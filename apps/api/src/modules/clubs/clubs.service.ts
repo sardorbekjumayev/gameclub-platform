@@ -164,7 +164,8 @@ export class ClubsService {
 
   /** Platforma xodimlari (SUPER_ADMIN/SUPPORT) klub ochmaydi va klub egasi bo'lolmaydi — ular faqat boshqaradi. */
   private async assertNotPlatformStaff(userId: string, tx: Prisma.TransactionClient = this.prisma) {
-    const n = await tx.user_roles.count({ where: { user_id: userId, role: { scope_type: 'PLATFORM' } } });
+    // CUSTOMER ham PLATFORM scope'li — shuning uchun rol kodi bo'yicha tekshiriladi
+    const n = await tx.user_roles.count({ where: { user_id: userId, role: { code: { in: ['SUPER_ADMIN', 'SUPPORT'] } } } });
     if (n > 0) throw new AppException('FORBIDDEN', 'Platform staff cannot own a club', { reason: 'PLATFORM_STAFF_CANNOT_OWN_CLUB' });
   }
 

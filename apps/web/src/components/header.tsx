@@ -23,17 +23,20 @@ export function Header() {
     { href: "/favorites", label: t("nav.favorites"), icon: Heart, show: !!me },
   ].filter((l) => l.show);
 
+  // Pastki menyu — ko'pi bilan 5 ta (barmoq bilan bosishga qulay); qolganlari Profil sahifasida
   const tabs = [
     { href: "/", label: t("nav.home"), icon: Home },
     { href: "/clubs", label: t("nav.clubs"), icon: Search },
     { href: "/map", label: t("nav.map"), icon: Map },
-    { href: "/rentals", label: t("nav.rentals"), icon: Gamepad2 },
     ...(me
       ? [
           { href: "/bookings", label: t("nav.bookings"), icon: CalendarDays },
           { href: "/profile", label: t("nav.profile"), icon: UserCircle },
         ]
-      : [{ href: "/login", label: t("nav.login"), icon: LogIn }]),
+      : [
+          { href: "/rentals", label: t("nav.rentals"), icon: Gamepad2 },
+          { href: "/login", label: t("nav.login"), icon: LogIn },
+        ]),
   ];
 
   return (
@@ -70,7 +73,7 @@ export function Header() {
                   <span className="grid h-8 w-8 place-items-center rounded-full bg-accent font-bold text-on-accent">{(me.first_name || "?").slice(0, 1).toUpperCase()}</span>
                   {me.first_name || t("nav.profile")}
                 </Link>
-              ) : (
+              ) : pathname === "/login" ? null : (
                 <Link
                   href="/login"
                   className="inline-flex h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-bold text-on-accent transition hover:bg-accent-hover sm:h-11 sm:px-5"
@@ -90,10 +93,11 @@ export function Header() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={cx("flex flex-col items-center gap-1 py-2.5 text-[11px] font-semibold", active(tab.href) ? "text-accent" : "text-muted")}
+              aria-current={active(tab.href) ? "page" : undefined}
+              className={cx("flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-semibold", active(tab.href) ? "text-accent" : "text-muted")}
             >
-              <tab.icon className="h-5 w-5" />
-              {tab.label}
+              <tab.icon className="h-5 w-5 shrink-0" />
+              <span className="max-w-full truncate">{tab.label}</span>
             </Link>
           ))}
         </div>

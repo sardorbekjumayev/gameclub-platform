@@ -16,8 +16,8 @@ const chakra = Chakra_Petch({
 });
 
 export const metadata: Metadata = {
-  title: "Game Club",
-  description: "Game Club Platform",
+  title: "Zonup",
+  description: "Zonup Platform",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

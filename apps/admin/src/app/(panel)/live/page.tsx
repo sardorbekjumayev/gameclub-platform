@@ -3,7 +3,7 @@
 import { formatMoney } from "@gc/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BranchPicker } from "@/components/club-tabs";
-import { DevicePanel, Modal, WalkInForm, isShiftRequired, remainingNow } from "@/components/live/device-panel";
+import { DevicePanel, Modal, type Success, WalkInForm, elapsedNow, isShiftRequired, remainingNow } from "@/components/live/device-panel";
 import { QrScanner } from "@/components/live/qr-scanner";
 import { TransferInbox } from "@/components/payments/transfer-inbox";
 import { ShiftPanel } from "@/components/live/shift-panel";
@@ -78,8 +78,10 @@ function Board({ branchId }: { branchId: string }) {
   const live = useApi<LiveSnapshot>(`/branches/${branchId}/live`);
   const [skew, setSkew] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
-  const [modal, setModal] = useState<"walkin" | "checkin" | "scan" | "shift" | null>(null);
+  const [modal, setModal] = useState<"walkin" | "checkin" | "shift" | null>(null);
   const [view, setView] = useState<"grid" | "map">("grid");
+  const [filter, setFilter] = useState<Occupancy | "ALL">("ALL");
+  const [q, setQ] = useState("");
   const [msg, setMsg] = useState<{ tone: "error" | "success" | "info"; text: string } | null>(null);
   const tick = useTick();
   const now = tick + skew;
@@ -123,6 +125,9 @@ function Board({ branchId }: { branchId: string }) {
   const d = live.data;
   const device = d?.devices.find((x) => x.id === selected) ?? null;
   const free = d?.devices.filter((x) => x.occupancy === "AVAILABLE") ?? [];
+  const count = (o: Occupancy) => d?.devices.filter((x) => x.occupancy === o).length ?? 0;
+  const needle = q.trim().toLowerCase();
+  const shown = (d?.devices ?? []).filter((x) => (filter === "ALL" || x.occupancy === filter) && (!needle || x.name.toLowerCase().includes(needle) || (x.session?.customer_name ?? "").toLowerCase().includes(needle)));
 
   return (
     <div className="space-y-5">
@@ -138,11 +143,6 @@ function Board({ branchId }: { branchId: string }) {
           {can("bookings.checkin") && (
             <Button variant="secondary" onClick={() => setModal("checkin")}>
               {t("live.checkIn")}
-            </Button>
-          )}
-          {can("bookings.checkin") && (
-            <Button variant="secondary" onClick={() => setModal("scan")}>
-              {t("live.scan.button")}
             </Button>
           )}
           {(can("shifts.open") || d?.open_shift) && (
@@ -176,13 +176,29 @@ function Board({ branchId }: { branchId: string }) {
           )}
 
           {d.devices.length > 0 && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Chip active={view === "grid"} onClick={() => setView("grid")}>
                 {t("live.view.grid")}
               </Chip>
               <Chip active={view === "map"} onClick={() => setView("map")}>
                 {t("live.view.map")}
               </Chip>
+              {view === "grid" && (
+                <>
+                  <span className="mx-1 hidden h-6 w-px bg-line sm:block" />
+                  <Chip active={filter === "ALL"} onClick={() => setFilter("ALL")}>
+                    {t("live.filter.all")} · {d.devices.length}
+                  </Chip>
+                  {(["AVAILABLE", "OCCUPIED", "RESERVED", "UNAVAILABLE"] as const).map((o) =>
+                    count(o) > 0 || filter === o ? (
+                      <Chip key={o} active={filter === o} onClick={() => setFilter(filter === o ? "ALL" : o)}>
+                        {t(`occupancy.${o}` as never)} · {count(o)}
+                      </Chip>
+                    ) : null,
+                  )}
+                  <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("live.search")} aria-label={t("live.search")} className="h-9 w-full sm:ml-auto sm:w-56" />
+                </>
+              )}
             </div>
           )}
           {d.devices.length === 0 ? (
@@ -204,9 +220,11 @@ function Board({ branchId }: { branchId: string }) {
               noRoomLabel={t("layout.noRoom")}
               onSelect={(id) => setSelected(id)}
             />
+          ) : shown.length === 0 ? (
+            <Empty>{t("live.filter.none")}</Empty>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {d.devices.map((x) => (
+              {shown.map((x) => (
                 <DeviceCard key={x.id} d={x} now={now} onClick={() => setSelected(x.id)} />
               ))}
             </div>
@@ -240,18 +258,18 @@ function Board({ branchId }: { branchId: string }) {
         <DevicePanel device={device} branchId={branchId} freeDevices={free} now={now} onDone={done} onClose={() => setSelected(null)} onShiftRequired={shiftRequired} />
       )}
       {modal === "walkin" && d && <WalkInModal branchId={branchId} free={free} onDone={done} onClose={() => setModal(null)} onShiftRequired={shiftRequired} />}
-      {(modal === "checkin" || modal === "scan") && <CheckInModal scan={modal === "scan"} onDone={done} onClose={() => setModal(null)} errorText={errorText} />}
+      {modal === "checkin" && <CheckInModal onDone={done} onClose={() => setModal(null)} errorText={errorText} />}
       {modal === "shift" && <ShiftPanel branchId={branchId} shiftId={d?.open_shift?.id ?? null} onClose={() => setModal(null)} onChanged={refresh} />}
     </div>
   );
 }
 
 function DeviceCard({ d, now, onClick }: { d: LiveDevice; now: number; onClick: () => void }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const tone = TONE[d.occupancy];
   const remaining = remainingNow(d, now);
   return (
-    <button onClick={onClick} className={cx("rounded-2xl border bg-surface p-4 text-left transition hover:bg-surface-2", tone.border)}>
+    <button onClick={onClick} className={cx("flex h-full flex-col items-stretch justify-start rounded-2xl border bg-surface p-4 text-left [&>*]:w-full transition hover:bg-surface-2", tone.border)}>
       <div className="flex items-center justify-between gap-2">
         <b className="truncate">{d.name}</b>
         <span className={cx("text-[13px] font-bold", tone.label)}>
@@ -260,12 +278,28 @@ function DeviceCard({ d, now, onClick }: { d: LiveDevice; now: number; onClick: 
       </div>
       {d.occupancy === "OCCUPIED" && d.session ? (
         <>
-          <div className="mt-1.5 truncate text-[13px] text-muted">{d.session.customer_name ?? t("live.guest")}</div>
-          <div className={cx("mt-1 font-display text-xl font-bold tabular-nums", remaining !== null && remaining < 0 ? "text-danger-soft" : remaining !== null && remaining < 600 ? "text-warn" : "")}>
-            {remaining === null ? "—" : fmtClock(remaining)}
-            {d.session.status === "PAUSED" && <span className="ml-2 text-xs text-muted">⏸</span>}
+          <div className="mt-1.5 flex items-center gap-1.5 truncate text-[13px] text-muted">
+            {d.session.is_open && <span className="rounded-full bg-accent px-1.5 text-[10px] font-bold text-on-accent">VIP</span>}
+            <span className="truncate">{d.session.customer_name ?? t("live.guest")}</span>
           </div>
-          {d.session.amount_due > 0 && <div className="mt-1 text-xs font-bold text-warn">{t("live.unpaid")}</div>}
+          {d.session.is_open ? (
+            <>
+              <div className="mt-1 font-display text-xl font-bold tabular-nums">
+                {fmtClock(elapsedNow(d, now) ?? 0)}
+                {d.session.status === "PAUSED" && <span className="ml-2 text-xs text-muted">⏸</span>}
+              </div>
+              <div className="mt-1 text-xs font-bold text-accent">{t("live.vip.accrued", { amount: formatMoney(d.session.accrued_amount ?? 0, locale) })}</div>
+              {d.session.must_end_by && <div className="mt-0.5 text-[11px] font-bold text-warn">{t("live.vip.limitShort", { time: fmtTime(d.session.must_end_by) })}</div>}
+            </>
+          ) : (
+            <>
+              <div className={cx("mt-1 font-display text-xl font-bold tabular-nums", remaining !== null && remaining < 0 ? "text-danger-soft" : remaining !== null && remaining < 600 ? "text-warn" : "")}>
+                {remaining === null ? "—" : fmtClock(remaining)}
+                {d.session.status === "PAUSED" && <span className="ml-2 text-xs text-muted">⏸</span>}
+              </div>
+              {d.session.amount_due > 0 && <div className="mt-1 text-xs font-bold text-warn">{t("live.unpaid")}</div>}
+            </>
+          )}
         </>
       ) : d.occupancy === "RESERVED" && d.next_booking ? (
         <>
@@ -289,12 +323,12 @@ function WalkInModal({ branchId, free, onDone, onClose, onShiftRequired }: { bra
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function run(_: string, fn: () => Promise<unknown>, success?: string) {
+  async function run(_: string, fn: () => Promise<unknown>, success?: Success) {
     setBusy(true);
     setError(null);
     try {
-      await fn();
-      onDone(success);
+      const r = await fn();
+      onDone(typeof success === "function" ? success((r as { data?: unknown })?.data) : success);
     } catch (e) {
       if (isShiftRequired(e)) onShiftRequired();
       else setError(errorText(e));
@@ -335,11 +369,11 @@ function WalkInModal({ branchId, free, onDone, onClose, onShiftRequired }: { bra
   );
 }
 
-function CheckInModal({ scan: initialScan, onDone, onClose, errorText }: { scan?: boolean; onDone: (m?: string) => void; onClose: () => void; errorText: (e: unknown) => string }) {
+function CheckInModal({ onDone, onClose, errorText }: { onDone: (m?: string) => void; onClose: () => void; errorText: (e: unknown) => string }) {
   const { t } = useI18n();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const [scan, setScan] = useState(!!initialScan);
+  const [scan, setScan] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function checkIn(payload: string) {
@@ -388,6 +422,8 @@ function CheckInModal({ scan: initialScan, onDone, onClose, errorText }: { scan?
 
 /** Tile ostidagi qisqa matn: band joyda qolgan vaqt, bron qilinganda boshlanish vaqti. */
 function remainingBadge(d: LiveDevice, now: number): string | undefined {
+  const open = elapsedNow(d, now);
+  if (open != null) return `VIP ${fmtClock(open)}`;
   const sec = remainingNow(d, now);
   if (sec != null) return fmtClock(sec);
   if (d.next_booking) return fmtTime(d.next_booking.start_at);

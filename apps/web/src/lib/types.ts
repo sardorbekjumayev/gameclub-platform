@@ -71,7 +71,7 @@ export type AvailDevice = {
   room: { id: string; name: string } | null;
   category: { id: string; name: string } | null;
   status: "AVAILABLE" | "BUSY" | "UNAVAILABLE" | string;
-  price_quote: { amount: number; tariff_name: string } | null;
+  price_quote: { amount: number; tariff_name: string; regular_amount?: number | null } | null;
 };
 export type AvailRoom = {
   id: string;
@@ -89,6 +89,23 @@ export type AvailRoom = {
 };
 
 export type Availability = { rooms?: AvailRoom[]; start_at: string; end_at: string; within_working_hours: boolean; hold_minutes: number; devices: AvailDevice[] };
+
+/** Paket narx (GET /branches/:id/packages): qat'iy davomiylik + narx; regular_amount — oddiy soatlik narx (tejash uchun). */
+export type BranchPackage = {
+  id: string;
+  name: string;
+  duration_minutes: number;
+  price: number;
+  regular_amount: number;
+  days_of_week: number[];
+  start_time: string | null;
+  end_time: string | null;
+  /** Qaysi tarif (xona/kategoriya) uchun — bir xil nomli paketlarni ajratish */
+  tariff: { id: string; name: string };
+};
+
+/** Bron paytidagi paket (snapshot). */
+export type BookingPackage = { id: string; name: string; duration_minutes: number; price: number };
 
 export type Tariff = { id: string; name: string; device_type: string | null; price_per_hour: number; rules: { kind: string; days_of_week: number[]; start_time: string; end_time: string; price_per_hour: number }[] };
 
@@ -125,6 +142,10 @@ export type BookingPayment = {
 };
 
 export type BookingDetail = Omit<BookingListItem, "devices"> & {
+  /** VIP (ochiq vaqt): tugash vaqti yo'q — summa operator yopganda hisoblanadi */
+  is_open?: boolean;
+  /** Paketli bron (masalan, "3 soat") — bron paytidagi shartlar */
+  package?: BookingPackage | null;
   subtotal_amount: number;
   discount_amount: number;
   amount_due: number;
@@ -268,3 +289,19 @@ export type RentalOrder = {
   amount_due?: number;
   can_cancel?: boolean;
 };
+
+export const TICKET_TYPES = ["SUGGESTION", "REQUEST", "COMPLAINT", "QUESTION", "BUG", "PAYMENT", "OTHER"] as const;
+export type TicketStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
+export type SupportMessage = { id: string; sender_id: string; body: string; is_staff: boolean; created_at: string };
+export type SupportTicket = {
+  id: string;
+  type: (typeof TICKET_TYPES)[number];
+  subject: string;
+  status: TicketStatus;
+  awaiting_reply: boolean;
+  last_message_at: string;
+  created_at: string;
+  club_name: string | null;
+  _count?: { messages: number };
+};
+export type SupportTicketDetail = SupportTicket & { can_reply: boolean; messages: SupportMessage[] };

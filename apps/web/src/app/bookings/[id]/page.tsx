@@ -8,6 +8,7 @@ import { Suspense, useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import { BookingReview } from "@/components/booking-review";
 import { BookingTicket } from "@/components/booking-ticket";
+import { SocialFollowCard } from "@/components/social";
 import { ReschedulePanel } from "@/components/reschedule-panel";
 import { RequireAuth } from "@/components/require-auth";
 import { TransferPay } from "@/components/transfer-pay";
@@ -152,7 +153,7 @@ function Booking() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `gameclub-${b.code}.png`;
+      a.download = `zonup-${b.code}.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -246,6 +247,7 @@ function Booking() {
       {b.status === "EXPIRED" && <Alert tone="info">{t("booking.expired")}</Alert>}
 
       <BookingTicket booking={b} qrImg={qrImg} showQr={showQr} />
+      {showQr && <SocialFollowCard />}
 
       <div className="grid grid-cols-2 gap-2">
         <a

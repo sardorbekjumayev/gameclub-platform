@@ -153,6 +153,20 @@ export async function seedDemo(prisma: PrismaClient) {
     console.log(`Demo club: ${c.name}`);
   }
 
+  // Demo paketlar (paketsiz xona tariflariga): "3 soat" ≈ 2.5 soat narxida, tungi 8 soat ≈ 5 soat narxida
+  const demoClubs = await prisma.clubs.findMany({ where: { slug: { in: CLUBS.map((c) => c.slug) } }, select: { id: true } });
+  const bare = await prisma.tariffs.findMany({ where: { room_id: { not: null }, deleted_at: null, club_id: { in: demoClubs.map((c) => c.id) }, packages: { none: {} } } });
+  for (const t of bare) {
+    const round = (v: bigint) => (v / 100_000n) * 100_000n; // 1 000 so'mga yaxlitlash
+    await prisma.tariff_packages.createMany({
+      data: [
+        { id: uuidv7(), tariff_id: t.id, club_id: t.club_id, branch_id: t.branch_id, name: '3 soat', duration_minutes: 180, price: round((t.price_per_hour * 5n) / 2n), position: 0 },
+        { id: uuidv7(), tariff_id: t.id, club_id: t.club_id, branch_id: t.branch_id, name: 'Tungi paket', duration_minutes: 480, price: round(t.price_per_hour * 5n), start_time: '22:00', end_time: '08:00', position: 1 },
+      ],
+    });
+  }
+  if (bare.length) console.log(`Demo packages: ${bare.length * 2}`);
+
   // Oldin yaratilgan demo xonalarga bezak (bo'sh bo'lsa)
   for (const c of CLUBS) {
     for (const b of c.branches) {

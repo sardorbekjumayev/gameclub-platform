@@ -1,7 +1,7 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/auth.decorators';
-import { DiscoveryService, MapQuery, SearchQuery } from './discovery.service';
+import { DiscoveryService, MapQuery, SearchQuery, SummaryQuery } from './discovery.service';
 
 @ApiTags('discovery')
 @Controller('discovery')
@@ -24,8 +24,8 @@ export class DiscoveryController {
   }
 
   @Public() @Get('branches/:id/summary')
-  summary(@Param('id', new ParseUUIDPipe()) id: string, @Query('lat') lat?: string, @Query('lng') lng?: string) {
-    return this.discovery.summary(id, lat ? Number(lat) : undefined, lng ? Number(lng) : undefined);
+  summary(@Param('id', new ParseUUIDPipe()) id: string, @Query() q: SummaryQuery) {
+    return this.discovery.summary(id, q.lat, q.lng);
   }
 }
 
@@ -44,7 +44,7 @@ export class DiscoveryAliasController {
   @Public() @Get('map') map(@Query() q: MapQuery) {
     return this.discovery.map(q);
   }
-  @Public() @Get(':id/summary') summary(@Param('id', new ParseUUIDPipe()) id: string, @Query('lat') lat?: string, @Query('lng') lng?: string) {
-    return this.discovery.summary(id, lat ? Number(lat) : undefined, lng ? Number(lng) : undefined);
+  @Public() @Get(':id/summary') summary(@Param('id', new ParseUUIDPipe()) id: string, @Query() q: SummaryQuery) {
+    return this.discovery.summary(id, q.lat, q.lng);
   }
 }

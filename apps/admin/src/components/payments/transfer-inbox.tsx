@@ -77,7 +77,8 @@ export function TransferInbox({ clubId, branchId, refreshKey = 0, compact }: { c
                 <div className="space-y-0.5">
                   <div className="font-mono text-sm font-bold">{p.booking_code ?? "—"}</div>
                   <div className="text-sm">
-                    {t("transfer.inbox.from", { name: p.provider_payload?.payer_name ?? "—", last4: p.provider_payload?.payer_card_last4 ?? "····" })}
+                    {p.provider_payload?.payer_name ? `${p.provider_payload.payer_name} · ` : ""}
+                    {t("transfer.inbox.from", { last4: p.provider_payload?.payer_card_last4 ?? "····" })}
                   </div>
                   <div className="text-xs text-muted">
                     {t("transfer.inbox.to", { last4: p.provider_payload?.card_last4 ?? "····" })} · {formatDateTime(p.created_at, undefined, locale)}

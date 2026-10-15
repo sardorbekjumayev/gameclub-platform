@@ -10,12 +10,27 @@ import { AuditService } from '../audit/audit.service';
 import { PricingService } from '../bookings/pricing.service';
 import { Actor } from '../clubs/clubs.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SettingsService } from '../settings/settings.service';
 import { assertCan, branchesInClub, can, clubScopeWhere, scopeFilter } from '../rbac/access';
 import { Grant } from '../rbac/rbac.service';
 import {
   AnnouncementDto, CreateReviewDto, CreateTicketDto, NotificationQuery, PromotionDto, ReviewListQuery, StaffReviewQuery, TicketListQuery, UpdatePromotionDto,
-  UpdateReviewDto, UpdateTicketDto,
+  SOCIAL_KINDS, type SocialKind, SocialSettingsDto, UpdateReviewDto, UpdateTicketDto,
 } from './engagement.dto';
+
+const MAX_OPEN_TICKETS = 10;
+/** Har bir ijtimoiy tarmoq havolasi faqat o'z domeniga (xato/fishing havolaning oldini olish). */
+const SOCIAL_HOSTS: Record<SocialKind, string[]> = {
+  instagram: ['instagram.com'],
+  telegram: ['t.me', 'telegram.me'],
+  tiktok: ['tiktok.com'],
+  youtube: ['youtube.com', 'youtu.be'],
+  facebook: ['facebook.com', 'fb.com'],
+};
+export type SocialSettings = { links: Partial<Record<SocialKind, string>>; promo_enabled: boolean };
+/** Xodim rollari ustuvorligi: murojaat yuborilganda eng yuqori rol snapshot qilinadi. */
+const STAFF_ROLE_ORDER = ['SUPER_ADMIN', 'SUPPORT', 'CLUB_OWNER', 'CLUB_ADMIN', 'BRANCH_ADMIN', 'OPERATOR'];
+const USER_BRIEF = { id: true, phone: true, email: true, first_name: true, last_name: true } as const;
 
 /** Sharh matnidan telefon/havolalarni olib tashlash (spam filtri, §6.13). */
 const sanitize = (t?: string) =>
@@ -28,6 +43,7 @@ export class EngagementService {
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
     private readonly pricing: PricingService,
+    private readonly settings: SettingsService,
   ) {}
 
   // ================= Sharhlar =================
@@ -182,69 +198,149 @@ export class EngagementService {
     return { favorite: false };
   }
 
-  // ================= Support =================
+  // ================= Support (talab va taklif) =================
+  // Barcha rollar murojaat yuboradi → platforma xodimlari (SUPER_ADMIN/SUPPORT) inbox'ida ko'radi va javob beradi.
 
-  async createTicket(userId: string, dto: CreateTicketDto) {
+  async createTicket(userId: string, dto: CreateTicketDto, grants: Grant[]) {
     let clubId = dto.club_id ?? null;
+    let senderRole = 'CUSTOMER';
+    if (dto.as === 'STAFF') {
+      // Panel xodimi: rol snapshot'i va klub — o'z grant'laridan (boshqa klub nomidan yozib bo'lmaydi)
+      const staff = [...grants]
+        .filter((g) => STAFF_ROLE_ORDER.includes(g.role))
+        .sort((x, y) => STAFF_ROLE_ORDER.indexOf(x.role) - STAFF_ROLE_ORDER.indexOf(y.role));
+      const g = (clubId ? staff.find((x) => x.club_id === clubId || x.scope_type === 'PLATFORM') : null) ?? staff[0];
+      if (!g || (clubId && g.scope_type !== 'PLATFORM' && g.club_id !== clubId)) throw new AppException('FORBIDDEN', 'Not a staff member');
+      senderRole = g.role;
+      if (g.scope_type !== 'PLATFORM') clubId = g.club_id ?? (g.branch_id ? (await this.prisma.branches.findUnique({ where: { id: g.branch_id }, select: { club_id: true } }))?.club_id ?? null : null);
+    } else if (clubId && !(await this.prisma.clubs.findFirst({ where: { id: clubId, deleted_at: null }, select: { id: true } }))) {
+      throw new AppException('NOT_FOUND', 'Club not found');
+    }
     if (dto.booking_id) {
       const b = await this.prisma.bookings.findFirst({ where: { id: dto.booking_id, customer_id: userId } });
       if (!b) throw new AppException('NOT_FOUND', 'Booking not found');
       clubId = b.club_id;
     }
+    const open = await this.prisma.support_tickets.count({ where: { user_id: userId, status: { in: ['OPEN', 'IN_PROGRESS'] } } });
+    if (open >= MAX_OPEN_TICKETS) throw new AppException('CONFLICT', 'Too many open tickets', { reason: 'MAX_OPEN_TICKETS', max: MAX_OPEN_TICKETS });
+
     const id = uuidv7();
     await this.prisma.$transaction([
-      this.prisma.support_tickets.create({ data: { id, user_id: userId, club_id: clubId, booking_id: dto.booking_id, type: dto.type, subject: dto.subject, priority: dto.type === 'PAYMENT' ? 'HIGH' : 'NORMAL' } }),
-      this.prisma.support_messages.create({ data: { id: uuidv7(), ticket_id: id, sender_id: userId, body: dto.body } }),
+      this.prisma.support_tickets.create({
+        data: { id, user_id: userId, club_id: clubId, booking_id: dto.booking_id, type: dto.type, subject: dto.subject.trim(), sender_role: senderRole, priority: dto.type === 'PAYMENT' ? 'HIGH' : 'NORMAL' },
+      }),
+      this.prisma.support_messages.create({ data: { id: uuidv7(), ticket_id: id, sender_id: userId, body: dto.body.trim() } }),
     ]);
-    return this.ticket(id, userId, []);
+    await this.notifications.notifyPlatformStaff('TICKET_NEW', { subject: dto.subject.trim() }, { ticket_id: id });
+    return this.ticket(id, userId, grants);
   }
 
   async tickets(userId: string, q: TicketListQuery, grants: Grant[]) {
-    const platform = scopeFilter(grants, 'platform.tickets.manage').platform;
+    const platform = q.all === 'true' && scopeFilter(grants, 'platform.tickets.manage').platform;
     const where: Prisma.support_ticketsWhereInput = {
-      ...(q.all === 'true' && platform ? {} : { user_id: userId }),
+      ...(platform ? {} : { user_id: userId }),
       ...(q.status ? { status: q.status } : {}),
+      ...(q.type ? { type: q.type } : {}),
+      ...(platform && q.sender ? (q.sender === 'CUSTOMER' ? { sender_role: 'CUSTOMER' } : { sender_role: { not: 'CUSTOMER' } }) : {}),
+      ...(q.awaiting === 'true' ? { awaiting_reply: true, status: { in: q.status ? [q.status] : ['OPEN', 'IN_PROGRESS'] } } : {}),
       ...(q.q ? { subject: { contains: q.q, mode: 'insensitive' } } : {}),
     };
     const [rows, total] = await Promise.all([
-      this.prisma.support_tickets.findMany({ where, orderBy: { updated_at: 'desc' }, ...pageArgs(q), include: { _count: { select: { messages: true } } } }),
+      this.prisma.support_tickets.findMany({ where, orderBy: { last_message_at: 'desc' }, ...pageArgs(q), include: { _count: { select: { messages: true } } } }),
       this.prisma.support_tickets.count({ where }),
     ]);
-    const users = await this.prisma.users.findMany({ where: { id: { in: rows.map((r) => r.user_id) } }, select: { id: true, phone: true, first_name: true, last_name: true } });
+    const users = platform ? await this.prisma.users.findMany({ where: { id: { in: rows.map((r) => r.user_id) } }, select: USER_BRIEF }) : [];
     const clubs = await this.prisma.clubs.findMany({ where: { id: { in: rows.map((r) => r.club_id).filter((x): x is string => !!x) } }, select: { id: true, name: true } });
     const u = new Map(users.map((x) => [x.id, x]));
     const c = new Map(clubs.map((x) => [x.id, x.name]));
     return new Paginated(rows.map((r) => ({ ...r, user: u.get(r.user_id) ?? null, club_name: r.club_id ? c.get(r.club_id) ?? null : null })), { page: q.page, limit: q.limit, total });
   }
 
+  /** Platforma inbox'i uchun: javob kutayotgan murojaatlar soni (menyu badge'i). */
+  async ticketStats() {
+    const [awaiting, open] = await Promise.all([
+      this.prisma.support_tickets.count({ where: { awaiting_reply: true, status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
+      this.prisma.support_tickets.count({ where: { status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
+    ]);
+    return { awaiting, open };
+  }
+
   async ticket(id: string, userId: string, grants: Grant[]) {
     const t = await this.prisma.support_tickets.findUnique({ where: { id }, include: { messages: { orderBy: { created_at: 'asc' } } } });
     const platform = scopeFilter(grants, 'platform.tickets.manage').platform;
-    // Klub ustidan shikoyat — tegishli klub xodimlari ham ko'radi (mijoz PII'siz)
-    const clubStaff = t?.club_id ? can(grants, 'customers.view', { club_id: t.club_id }) : false;
+    // Mijozning klub ustidan shikoyati — tegishli klub xodimlari ham ko'radi (mijoz PII'siz, javob yozolmaydi)
+    const clubStaff = t?.club_id && t.sender_role === 'CUSTOMER' ? can(grants, 'customers.view', { club_id: t.club_id }) : false;
     if (!t || (t.user_id !== userId && !platform && !clubStaff)) throw new AppException('NOT_FOUND', 'Ticket not found');
-    const user = platform || t.user_id === userId ? await this.prisma.users.findUnique({ where: { id: t.user_id }, select: { id: true, phone: true, first_name: true, last_name: true } }) : null;
-    return { ...t, user };
+    const user = platform || t.user_id === userId ? await this.prisma.users.findUnique({ where: { id: t.user_id }, select: USER_BRIEF }) : null;
+    const club = t.club_id ? await this.prisma.clubs.findUnique({ where: { id: t.club_id }, select: { name: true } }) : null;
+    // Javob bergan xodim ismi faqat platformaga; murojaat egasi "Support" deb ko'radi
+    const staffIds = platform ? [...new Set(t.messages.filter((m) => m.is_staff).map((m) => m.sender_id))] : [];
+    const staff = staffIds.length ? await this.prisma.users.findMany({ where: { id: { in: staffIds } }, select: USER_BRIEF }) : [];
+    const names = new Map(staff.map((x) => [x.id, [x.first_name, x.last_name].filter(Boolean).join(' ') || x.email || x.phone]));
+    return {
+      ...t,
+      user,
+      club_name: club?.name ?? null,
+      can_reply: t.status !== 'CLOSED' && (t.user_id === userId || platform),
+      messages: t.messages.map((m) => ({ ...m, sender_name: m.is_staff ? names.get(m.sender_id) ?? null : null })),
+    };
   }
 
   async addMessage(id: string, userId: string, body: string, grants: Grant[]) {
     const t = await this.ticket(id, userId, grants);
-    const isStaff = t.user_id !== userId;
-    if (t.status === 'CLOSED') throw new AppException('CONFLICT', 'Ticket is closed');
+    const isOwner = t.user_id === userId;
+    if (!isOwner && !scopeFilter(grants, 'platform.tickets.manage').platform) throw new AppException('FORBIDDEN', 'Only platform staff can reply');
+    if (t.status === 'CLOSED') throw new AppException('CONFLICT', 'Ticket is closed', { reason: 'TICKET_CLOSED' });
+    const isStaff = !isOwner;
+    const now = new Date();
     await this.prisma.$transaction([
-      this.prisma.support_messages.create({ data: { id: uuidv7(), ticket_id: id, sender_id: userId, body, is_staff: isStaff } }),
-      this.prisma.support_tickets.update({ where: { id }, data: { status: isStaff ? (t.status === 'OPEN' ? 'IN_PROGRESS' : t.status) : t.status === 'RESOLVED' ? 'OPEN' : t.status } }),
+      this.prisma.support_messages.create({ data: { id: uuidv7(), ticket_id: id, sender_id: userId, body: body.trim(), is_staff: isStaff, created_at: now } }),
+      this.prisma.support_tickets.update({
+        where: { id },
+        data: {
+          awaiting_reply: !isStaff,
+          last_message_at: now,
+          status: isStaff ? (t.status === 'OPEN' ? 'IN_PROGRESS' : t.status) : t.status === 'RESOLVED' ? 'OPEN' : t.status,
+        },
+      }),
     ]);
     if (isStaff) await this.notifications.notify([t.user_id], 'TICKET_REPLY', { subject: t.subject }, { ticket_id: id });
+    else await this.notifications.notifyPlatformStaff('TICKET_USER_REPLY', { subject: t.subject }, { ticket_id: id });
     return this.ticket(id, userId, grants);
   }
 
   async updateTicket(id: string, dto: UpdateTicketDto, actor: Actor) {
     const t = await this.prisma.support_tickets.findUnique({ where: { id } });
     if (!t) throw new AppException('NOT_FOUND', 'Ticket not found');
-    const u = await this.prisma.support_tickets.update({ where: { id }, data: dto });
-    await this.audit.log({ actor_id: actor.id, club_id: t.club_id, action: 'admin.ticket.update', target_type: 'support_ticket', target_id: id, old_value: { status: t.status }, new_value: dto });
+    // Yopilgan/hal qilingan murojaat endi javob kutmaydi
+    const closing = dto.status === 'RESOLVED' || dto.status === 'CLOSED';
+    const u = await this.prisma.support_tickets.update({ where: { id }, data: { ...dto, ...(closing ? { awaiting_reply: false } : {}) } });
+    await this.audit.log({ actor_id: actor.id, club_id: t.club_id, action: 'admin.ticket.update', target_type: 'support_ticket', target_id: id, old_value: { status: t.status, priority: t.priority }, new_value: dto });
+    if (closing && dto.status !== t.status) await this.notifications.notify([t.user_id], dto.status === 'RESOLVED' ? 'TICKET_RESOLVED' : 'TICKET_CLOSED', { subject: t.subject }, { ticket_id: id });
     return u;
+  }
+
+  // ================= Ijtimoiy tarmoqlar =================
+
+  async social(): Promise<SocialSettings> {
+    const v = await this.settings.get<SocialSettings | undefined>('social');
+    return { links: v?.links ?? {}, promo_enabled: v?.promo_enabled ?? false };
+  }
+
+  async setSocial(dto: SocialSettingsDto, actor: Actor) {
+    const links: Partial<Record<SocialKind, string>> = {};
+    for (const kind of SOCIAL_KINDS) {
+      const raw = dto.links[kind]?.trim();
+      if (!raw) continue;
+      const host = new URL(raw).hostname.toLowerCase().replace(/^(www\.|m\.)/, '');
+      if (!SOCIAL_HOSTS[kind].includes(host)) throw new AppException('VALIDATION_ERROR', `${kind} link must point to ${SOCIAL_HOSTS[kind].join(' / ')}`, { field: `links.${kind}`, reason: 'SOCIAL_HOST' });
+      links[kind] = raw;
+    }
+    const before = await this.social();
+    const next: SocialSettings = { links, promo_enabled: dto.promo_enabled && Object.keys(links).length > 0 };
+    await this.settings.set('social', next, actor.id);
+    await this.audit.log({ actor_id: actor.id, action: 'admin.settings.social', target_type: 'platform_setting', target_id: 'social', old_value: before, new_value: next, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
+    return next;
   }
 
   // ================= Bildirishnomalar =================
@@ -320,7 +416,9 @@ export class EngagementService {
   }
 
   async deleteAnnouncement(id: string, clubId: string | null, actor: Actor) {
-    await this.prisma.announcements.deleteMany({ where: { id, club_id: clubId } });
+    // Boshqa klub (yoki platforma) e'loni — "mavjud emas"; soxta audit yozuvi ham qolmasin
+    const { count } = await this.prisma.announcements.deleteMany({ where: { id, club_id: clubId } });
+    if (!count) throw new AppException('NOT_FOUND', 'Announcement not found');
     await this.audit.log({ actor_id: actor.id, club_id: clubId, action: 'announcement.delete', target_type: 'announcement', target_id: id });
     return { deleted: true };
   }
@@ -353,6 +451,8 @@ export class EngagementService {
     if (!p) throw new AppException('NOT_FOUND', 'Promotion not found');
     if (p.club_id) assertCan(grants, 'promotions.manage', { club_id: p.club_id });
     else if (!scopeFilter(grants, 'platform.settings.manage').platform) throw new AppException('NOT_FOUND', 'Promotion not found');
+    // Yaratishdagi kabi: foizli promo 1-100 oralig'ida qolishi shart
+    if (p.type === 'PERCENT' && dto.value !== undefined && dto.value > 100) throw new AppException('VALIDATION_ERROR', 'Percent must be 1-100', { field: 'value' });
     const u = await this.prisma.promotions.update({
       where: { id },
       data: {

@@ -20,6 +20,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cp apps/api/.env.example apps/api/.env
       - run: pnpm --filter @gc/api exec prisma generate
+      # e2e testlar haqiqiy bazada: sxema + RBAC/super admin/tarif rejalari
+      - run: pnpm db:migrate
+      - run: pnpm db:seed
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm test:e2e

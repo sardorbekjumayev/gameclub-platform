@@ -2,14 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
+import { openBillableMinutes } from '../../common/domain/open-session';
 import { AppException } from '../../common/errors';
 import { bookingCode, verifyQr } from '../../common/utils/codes';
-import { fmtTime } from '../../common/utils/format';
+import { fmtMoney, fmtTime } from '../../common/utils/format';
 import { uuidv7 } from '../../common/utils/id';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { BookingsService, Caller } from '../bookings/bookings.service';
+import { bookingSettings } from '../clubs/branches.service';
 import { PricingService } from '../bookings/pricing.service';
+import { packageBreakdown } from '../bookings/bookings.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FinanceService } from '../payments/finance.service';
 import { assertCan, can } from '../rbac/access';
@@ -21,6 +24,10 @@ const LIVE = ['WAITING', 'ACTIVE', 'PAUSED'];
 const EXCLUSION = /booking_items_no_overlap|23P01|exclusion constraint/;
 const UNIQUE_LIVE = /sessions_one_live_per_device/;
 const OVERTIME_GRACE_MIN = 5;
+/** VIP: keyingi brongacha shundan kam vaqt qolsa ochiq sessiya ochilmaydi. */
+const OPEN_MIN_WINDOW_MIN = 15;
+/** Bron hali to'lanmagan, lekin hold'i tirik — u ham "keyingi bron" hisoblanadi. */
+const UPCOMING_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN'];
 
 @Injectable()
 export class SessionsService {
@@ -60,7 +67,65 @@ export class SessionsService {
     const now = Date.now();
     const pausedExtra = s.status === 'PAUSED' && s.paused_at ? now - s.paused_at.getTime() : 0;
     const remaining = s.expected_end_at && ['ACTIVE', 'PAUSED'].includes(s.status) ? Math.round((s.expected_end_at.getTime() + pausedExtra - now) / 1000) : null;
-    return { ...s, device, booking, remaining_seconds: remaining, amount_due: booking ? booking.total_amount - booking.paid_amount : 0n, server_time: new Date().toISOString() };
+    const open = s.is_open && LIVE.includes(s.status) ? await this.openAccrued(s, new Date(now)) : null;
+    const due = booking ? booking.total_amount - booking.paid_amount : 0n;
+    return {
+      ...s, device, booking, remaining_seconds: remaining,
+      elapsed_seconds: open?.elapsed_seconds ?? null,
+      billable_minutes: open?.billable_minutes ?? null,
+      accrued_amount: open?.amount ?? null,
+      amount_due: open ? due + open.amount : due,
+      server_time: new Date().toISOString(),
+    };
+  }
+
+  // ---------- VIP / ochiq vaqt ----------
+
+  /** Ochiq sessiya hozirgacha qancha bo'ldi (server hisoblaydi; klient faqat ko'rsatadi). */
+  private async openAccrued(s: { branch_id: string; device_id: string; started_at: Date | null; status: string; paused_at: Date | null; total_paused_seconds: number }, now: Date) {
+    const branch = await this.prisma.branches.findUniqueOrThrow({ where: { id: s.branch_id } });
+    const settings = bookingSettings(branch);
+    const started = s.started_at ?? now;
+    const pausedNow = s.status === 'PAUSED' && s.paused_at ? Math.round((now.getTime() - s.paused_at.getTime()) / 1000) : 0;
+    const pausedSeconds = s.total_paused_seconds + pausedNow;
+    const minutes = openBillableMinutes(now.getTime() - started.getTime(), pausedSeconds, settings.open_min_minutes, settings.open_round_minutes);
+    const device = await this.prisma.devices.findUniqueOrThrow({ where: { id: s.device_id } });
+    // Tarif oynalari (kunduzgi/tungi) bo'yicha: boshlangan vaqtdan to'lanadigan daqiqalar davomida
+    const q = this.pricing.tryQuote(await this.pricing.tariffs(s.branch_id), device, started, new Date(started.getTime() + minutes * 60_000), branch.timezone);
+    return {
+      elapsed_seconds: Math.max(0, Math.round((now.getTime() - started.getTime()) / 1000) - pausedSeconds),
+      billable_minutes: minutes,
+      amount: q?.amount ?? 0n,
+    };
+  }
+
+  /**
+   * Qurilmadagi keyingi (oldindan qilingan) bron — ochiq sessiya undan oldin yakunlanishi kerak.
+   * Qaytaradi: `limit` — ochiq sessiyaning booking_item oralig'i oxiri (bron boshlanishi − buffer) yoki null.
+   */
+  private async nextBookingLimit(tx: Tx, deviceIds: string[], from: Date, bufferMinutes: number, excludeBookingId?: string) {
+    const next = await tx.booking_items.findFirst({
+      where: {
+        device_id: { in: deviceIds }, active: true, start_at: { gte: from },
+        ...(excludeBookingId ? { booking_id: { not: excludeBookingId } } : {}),
+        booking: { status: { in: UPCOMING_STATUSES } },
+        NOT: { booking: { status: 'PENDING_PAYMENT', hold_expires_at: { lte: new Date() } } },
+      },
+      orderBy: { start_at: 'asc' },
+      include: { booking: { select: { code: true } } },
+    });
+    if (!next) return null;
+    const limit = new Date(next.start_at.getTime() - bufferMinutes * 60_000);
+    if (limit.getTime() - from.getTime() < OPEN_MIN_WINDOW_MIN * 60_000) {
+      const device = await tx.devices.findUnique({ where: { id: next.device_id }, select: { name: true } });
+      throw new AppException('BOOKING_SLOT_TAKEN', `${device?.name ?? 'Device'} is booked soon`, { reason: 'NEXT_BOOKING_SOON', device_id: next.device_id, next_start_at: next.start_at.toISOString(), booking_code: next.booking.code });
+    }
+    return limit;
+  }
+
+  /** Ochiq sessiya qurilmani band qiladigan oraliq oxiri: keyingi bron yoki bron qilish mumkin bo'lgan butun oyna. */
+  private openHorizon(from: Date, maxAdvanceDays: number) {
+    return new Date(from.getTime() + (maxAdvanceDays + 1) * 86400_000);
   }
 
   // ---------- Check-in ----------
@@ -103,7 +168,7 @@ export class SessionsService {
 
   // ---------- Boshlash ----------
 
-  async startFromBooking(bookingId: string, caller: Caller, deviceId?: string) {
+  async startFromBooking(bookingId: string, caller: Caller, deviceId?: string, open?: { mustEndBy: Date | null }) {
     const b = await this.prisma.bookings.findUnique({ where: { id: bookingId }, include: { items: true } });
     if (!b) throw new AppException('NOT_FOUND', 'Booking not found');
     assertCan(caller.grants, 'sessions.start', { club_id: b.club_id, branch_id: b.branch_id });
@@ -130,7 +195,7 @@ export class SessionsService {
       try {
         const id = await this.prisma.$transaction(async (tx) => {
           // Erta yoki kech boshlansa — to'liq bron qilingan davomiylik beriladi (joy bo'sh bo'lsa)
-          if (Math.abs(now.getTime() - item.start_at.getTime()) > 60_000) {
+          if (!open && Math.abs(now.getTime() - item.start_at.getTime()) > 60_000) {
             const newEnd = new Date(now.getTime() + duration);
             try {
               await tx.$executeRaw`SAVEPOINT shift_item`;
@@ -143,15 +208,20 @@ export class SessionsService {
           }
           const sid = uuidv7();
           await tx.sessions.create({
-            data: { id: sid, club_id: b.club_id, branch_id: b.branch_id, booking_id: b.id, booking_item_id: item.id, device_id: item.device_id, customer_id: b.customer_id, status: 'ACTIVE', started_at: now, expected_end_at: expectedEnd, started_by: caller.id },
+            data: {
+              id: sid, club_id: b.club_id, branch_id: b.branch_id, booking_id: b.id, booking_item_id: item.id, device_id: item.device_id, customer_id: b.customer_id, status: 'ACTIVE', started_at: now,
+              // Ochiq sessiyada tugash vaqti yo'q — qurilma operator yopguncha band (BookingsService.busy)
+              expected_end_at: open ? null : expectedEnd, is_open: !!open, must_end_by: open?.mustEndBy ?? null, started_by: caller.id,
+            },
           });
           await tx.bookings.update({ where: { id: b.id }, data: { status: 'ACTIVE' } });
           await tx.booking_events.create({ data: { id: uuidv7(), booking_id: b.id, type: 'SESSION_STARTED', actor_id: caller.id, data: { session_id: sid, device_id: item.device_id } } });
-          await this.audit.log({ actor_id: caller.id, club_id: b.club_id, action: 'session.start', target_type: 'session', target_id: sid }, tx);
+          await this.audit.log({ actor_id: caller.id, club_id: b.club_id, action: open ? 'session.start_open' : 'session.start', target_type: 'session', target_id: sid, new_value: open ? { must_end_by: open.mustEndBy } : undefined }, tx);
           return sid;
         });
         created.push(id);
-        await this.notifications.notify([b.customer_id], 'SESSION_STARTED', { device: device.name, until: fmtTime(expectedEnd, ctx.branch.timezone) }, { session_id: id, booking_id: b.id });
+        if (open) await this.notifications.notify([b.customer_id], 'SESSION_STARTED_OPEN', { device: device.name }, { session_id: id, booking_id: b.id });
+        else await this.notifications.notify([b.customer_id], 'SESSION_STARTED', { device: device.name, until: fmtTime(expectedEnd, ctx.branch.timezone) }, { session_id: id, booking_id: b.id });
       } catch (e) {
         if (UNIQUE_LIVE.test(String((e as Error).message))) throw new AppException('SESSION_ALREADY_ACTIVE', `${device.name} already has an active session`, { device_id: device.id });
         throw e;
@@ -166,10 +236,15 @@ export class SessionsService {
   async walkIn(dto: WalkInDto, caller: Caller) {
     const ctx = await this.bookings.branchCtx(dto.branch_id, { requireActive: false });
     assertCan(caller.grants, 'bookings.create', { club_id: ctx.club.id, branch_id: ctx.branch.id });
+    const open = !!dto.open;
+    if (open && dto.package_id) throw new AppException('VALIDATION_ERROR', 'Package cannot be used with an open session', { field: 'package_id', reason: 'PACKAGE_OPEN' });
     const start = DateTime.now().startOf('minute').toJSDate();
-    const end = new Date(start.getTime() + dto.duration_minutes * 60_000);
-    const blockedEnd = new Date(end.getTime() + ctx.settings.buffer_minutes * 60_000);
     const tariffs = await this.pricing.tariffs(ctx.branch.id);
+    const pkg = dto.package_id ? this.pricing.findPackage(tariffs, dto.package_id) : null;
+    const duration = open ? 0 : (pkg?.duration_minutes ?? dto.duration_minutes!);
+    let end = new Date(start.getTime() + duration * 60_000);
+    let blockedEnd = new Date(end.getTime() + ctx.settings.buffer_minutes * 60_000);
+    let mustEndBy: Date | null = null;
     let customerId: string | null = null;
     if (dto.guest_phone) customerId = (await this.prisma.users.findUnique({ where: { phone: dto.guest_phone } }))?.id ?? null;
     let bookingId: string;
@@ -180,31 +255,39 @@ export class SessionsService {
         const bad = devices.find((d) => d.operational_status !== 'ACTIVE');
         if (bad) throw new AppException('DEVICE_NOT_AVAILABLE', `${bad.name} is not available`, { device_id: bad.id });
         await this.bookings.expireHolds(tx, { device_ids: dto.device_ids });
-        const { reserved, occupied } = await this.bookings.busy(tx, dto.device_ids, start, blockedEnd);
+        if (open) {
+          // Ochiq sessiya: qurilma keyingi brongacha (yoki butun bron oynasi bo'yicha) band qilinadi —
+          // exclusion constraint parallel onlayn bronni ham DB darajasida to'xtatadi.
+          mustEndBy = await this.nextBookingLimit(tx, dto.device_ids, start, ctx.settings.buffer_minutes);
+          end = mustEndBy ?? this.openHorizon(start, ctx.settings.max_advance_days);
+          blockedEnd = end;
+        }
+        const { reserved, occupied } = await this.bookings.busy(tx, dto.device_ids, start, open ? new Date(start.getTime() + 60_000) : blockedEnd);
         const busy = devices.find((d) => reserved.has(d.id) || occupied.has(d.id));
         if (busy) throw new AppException('BOOKING_SLOT_TAKEN', `${busy.name} is busy for this period`, { device_id: busy.id });
-        const quotes = devices.map((d) => ({ d, q: this.pricing.quoteDevice(tariffs, d, start, end, ctx.branch.timezone) }));
+        const quotes = devices.map((d) => ({ d, q: open ? { amount: 0n, tariff_id: null, segments: [] } : this.pricing.quoteDevice(tariffs, d, start, end, ctx.branch.timezone, pkg) }));
         const total = quotes.reduce((s, x) => s + x.q.amount, 0n);
         const id = uuidv7();
         await tx.bookings.create({
           data: {
             id, code: bookingCode(), customer_id: customerId, guest_name: dto.guest_name, guest_phone: dto.guest_phone, club_id: ctx.club.id, branch_id: ctx.branch.id,
-            source: 'WALK_IN', status: 'CHECKED_IN', start_at: start, end_at: end, duration_minutes: dto.duration_minutes, subtotal_amount: total, total_amount: total,
-            payment_status: total === 0n ? 'PAID' : 'UNPAID', checked_in_at: start, checked_in_by: caller.id,
+            source: 'WALK_IN', status: 'CHECKED_IN', start_at: start, end_at: open ? new Date(start.getTime() + 60_000) : end, duration_minutes: duration, subtotal_amount: total, total_amount: total,
+            payment_status: total === 0n && !open ? 'PAID' : 'UNPAID', checked_in_at: start, checked_in_by: caller.id,
+            ...(pkg ? { price_snapshot: { package: this.pricing.packageSnapshot(pkg) } } : {}),
           },
         });
         await tx.booking_items.createMany({
           data: quotes.map((x) => ({
             id: uuidv7(), booking_id: id, club_id: ctx.club.id, branch_id: ctx.branch.id, device_id: x.d.id, category_id: x.d.category_id, start_at: start, end_at: end,
-            blocked_until: blockedEnd, active: true, price_amount: x.q.amount, tariff_id: x.q.tariff_id, price_breakdown: { segments: x.q.segments } as unknown as Prisma.InputJsonValue,
+            blocked_until: blockedEnd, active: true, price_amount: x.q.amount, tariff_id: x.q.tariff_id, price_breakdown: { segments: x.q.segments, ...('package' in x.q ? packageBreakdown(x.q) : {}) } as unknown as Prisma.InputJsonValue,
           })),
         });
-        if (dto.payment_method !== 'LATER' && total > 0n) {
+        if (!open && dto.payment_method !== 'LATER' && total > 0n) {
           const shift = await this.finance.openShift(tx, caller.id, ctx.branch.id);
           await this.finance.recordOffline(tx, { club_id: ctx.club.id, branch_id: ctx.branch.id, booking_id: id, user_id: customerId, amount: total, method: dto.payment_method, operator_id: caller.id, shift_id: shift.id });
         }
-        await tx.booking_events.create({ data: { id: uuidv7(), booking_id: id, type: 'WALK_IN', actor_id: caller.id } });
-        await this.audit.log({ actor_id: caller.id, club_id: ctx.club.id, action: 'booking.walk_in', target_type: 'booking', target_id: id, new_value: { devices: devices.map((d) => d.name), total: Number(total) } }, tx);
+        await tx.booking_events.create({ data: { id: uuidv7(), booking_id: id, type: 'WALK_IN', actor_id: caller.id, data: open ? { open: true, must_end_by: mustEndBy } : undefined } });
+        await this.audit.log({ actor_id: caller.id, club_id: ctx.club.id, action: 'booking.walk_in', target_type: 'booking', target_id: id, new_value: { devices: devices.map((d) => d.name), total: Number(total), open, package_id: pkg?.id ?? null } }, tx);
         return id;
       });
     } catch (e) {
@@ -212,7 +295,8 @@ export class SessionsService {
       throw e;
     }
     this.realtime.branch(ctx.branch.id, 'booking.created', { booking_id: bookingId, source: 'WALK_IN' });
-    if (dto.start_now !== false) await this.startFromBooking(bookingId, caller);
+    if (open) await this.startFromBooking(bookingId, caller, undefined, { mustEndBy });
+    else if (dto.start_now !== false) await this.startFromBooking(bookingId, caller);
     return this.bookings.detail(bookingId);
   }
 
@@ -221,7 +305,9 @@ export class SessionsService {
   async pause(id: string, caller: Caller) {
     const s = await this.load(id, caller, 'sessions.pause');
     if (s.status !== 'ACTIVE') throw new AppException('CONFLICT', `Cannot pause a ${s.status} session`);
-    await this.prisma.sessions.update({ where: { id }, data: { status: 'PAUSED', paused_at: new Date() } });
+    // Shartli yangilash: parallel so'rovda faqat bittasi pauza qiladi
+    const done = await this.prisma.sessions.updateMany({ where: { id, status: 'ACTIVE' }, data: { status: 'PAUSED', paused_at: new Date() } });
+    if (!done.count) throw new AppException('CONFLICT', 'Session state has changed');
     await this.audit.log({ actor_id: caller.id, club_id: s.club_id, action: 'session.pause', target_type: 'session', target_id: id });
     const v = await this.view(id);
     this.emitLive(v, 'session.updated');
@@ -235,6 +321,14 @@ export class SessionsService {
     const newEnd = new Date((s.expected_end_at ?? new Date()).getTime() + pausedMs);
     let extended = true;
     await this.prisma.$transaction(async (tx) => {
+      // Shartli yangilash: parallel resume pauza vaqtini ikki marta qo'shmasin
+      const done = await tx.sessions.updateMany({
+        where: { id, status: 'PAUSED', paused_at: s.paused_at },
+        data: { status: 'ACTIVE', paused_at: null, total_paused_seconds: { increment: Math.round(pausedMs / 1000) } },
+      });
+      if (!done.count) throw new AppException('CONFLICT', 'Session state has changed');
+      // Ochiq sessiyada tugash vaqti yo'q — faqat pauza vaqti hisobdan chiqariladi
+      if (s.is_open) return;
       if (s.booking_item_id) {
         try {
           await tx.$executeRaw`SAVEPOINT resume_ext`;
@@ -245,10 +339,7 @@ export class SessionsService {
           extended = false;
         }
       }
-      await tx.sessions.update({
-        where: { id },
-        data: { status: 'ACTIVE', paused_at: null, total_paused_seconds: { increment: Math.round(pausedMs / 1000) }, ...(extended ? { expected_end_at: newEnd } : {}) },
-      });
+      if (extended) await tx.sessions.update({ where: { id }, data: { expected_end_at: newEnd } });
     });
     await this.audit.log({ actor_id: caller.id, club_id: s.club_id, action: 'session.resume', target_type: 'session', target_id: id, new_value: { paused_seconds: Math.round(pausedMs / 1000), extended } });
     const v = await this.view(id);
@@ -262,7 +353,7 @@ export class SessionsService {
     await tx.booking_items.update({ where: { id: itemId }, data: { end_at: end, blocked_until: new Date(end.getTime() + buffer) } });
   }
 
-  private async charge(tx: Tx, s: { id: string; booking_id: string | null }, type: 'EXTENSION' | 'OVERTIME', minutes: number, amount: bigint, actorId: string, description: string) {
+  private async charge(tx: Tx, s: { id: string; booking_id: string | null }, type: 'EXTENSION' | 'OVERTIME' | 'OPEN_TIME', minutes: number, amount: bigint, actorId: string, description: string) {
     await tx.session_charges.create({ data: { id: uuidv7(), session_id: s.id, type, minutes, amount, description, created_by: actorId } });
     if (s.booking_id && amount > 0n) {
       await tx.bookings.update({ where: { id: s.booking_id }, data: { subtotal_amount: { increment: amount }, total_amount: { increment: amount } } });
@@ -272,6 +363,7 @@ export class SessionsService {
 
   async extend(id: string, dto: ExtendDto, caller: Caller) {
     const s = await this.load(id, caller, 'sessions.extend');
+    if (s.is_open) throw new AppException('CONFLICT', 'Open sessions have no end time to extend', { reason: 'OPEN_SESSION' });
     if (!['ACTIVE', 'PAUSED'].includes(s.status) || !s.expected_end_at) throw new AppException('CONFLICT', `Cannot extend a ${s.status} session`);
     const ctx = await this.bookings.branchCtx(s.branch_id, { requireActive: false });
     const from = s.expected_end_at;
@@ -280,8 +372,10 @@ export class SessionsService {
     const q = this.pricing.quoteDevice(await this.pricing.tariffs(s.branch_id), device, from, to, ctx.branch.timezone);
     try {
       await this.prisma.$transaction(async (tx) => {
+        // Shartli yangilash: parallel uzaytirish/yakunlashda eski holat ustidan yozmaymiz (vaqt va summa mos qoladi)
+        const done = await tx.sessions.updateMany({ where: { id, status: { in: ['ACTIVE', 'PAUSED'] }, expected_end_at: from }, data: { expected_end_at: to } });
+        if (!done.count) throw new AppException('CONFLICT', 'Session state has changed, retry');
         if (s.booking_item_id) await this.setItemEnd(tx, s.booking_item_id, s.branch_id, to);
-        await tx.sessions.update({ where: { id }, data: { expected_end_at: to } });
         if (s.booking_id) await tx.bookings.update({ where: { id: s.booking_id }, data: { end_at: to, duration_minutes: { increment: dto.minutes } } });
         await this.charge(tx, s, 'EXTENSION', dto.minutes, q.amount, caller.id, `+${dto.minutes} min`);
         if (dto.payment_method && dto.payment_method !== 'LATER' && q.amount > 0n) {
@@ -307,8 +401,23 @@ export class SessionsService {
     const from = await this.prisma.devices.findUniqueOrThrow({ where: { id: s.device_id } });
     try {
       await this.prisma.$transaction(async (tx) => {
-        if (s.booking_item_id) await tx.booking_items.update({ where: { id: s.booking_item_id }, data: { device_id: to.id, start_at: new Date() } });
-        await tx.sessions.update({ where: { id }, data: { device_id: to.id } });
+        if (s.is_open && s.booking_item_id) {
+          // Yangi qurilmaning keyingi broni bo'yicha chegara qaytadan hisoblanadi
+          const ctx = await this.bookings.branchCtx(s.branch_id, { requireActive: false });
+          const now = new Date();
+          const { reserved, occupied } = await this.bookings.busy(tx, [to.id], now, new Date(now.getTime() + 60_000), s.booking_id ?? undefined);
+          if (reserved.has(to.id) || occupied.has(to.id)) throw new AppException('DEVICE_NOT_AVAILABLE', `${to.name} is busy`, { device_id: to.id });
+          const limit = await this.nextBookingLimit(tx, [to.id], now, ctx.settings.buffer_minutes, s.booking_id ?? undefined).catch((e: unknown) => {
+            if (e instanceof AppException) throw new AppException('DEVICE_NOT_AVAILABLE', `${to.name} is booked soon`, e.details);
+            throw e;
+          });
+          const end = limit ?? this.openHorizon(now, ctx.settings.max_advance_days);
+          await tx.booking_items.update({ where: { id: s.booking_item_id }, data: { device_id: to.id, start_at: now, end_at: end, blocked_until: end } });
+          await tx.sessions.update({ where: { id }, data: { device_id: to.id, must_end_by: limit } });
+        } else {
+          if (s.booking_item_id) await tx.booking_items.update({ where: { id: s.booking_item_id }, data: { device_id: to.id, start_at: new Date() } });
+          await tx.sessions.update({ where: { id }, data: { device_id: to.id } });
+        }
         if (s.booking_id) await tx.booking_events.create({ data: { id: uuidv7(), booking_id: s.booking_id, type: 'SESSION_MOVED', actor_id: caller.id, data: { from: from.name, to: to.name } } });
         await this.audit.log({ actor_id: caller.id, club_id: s.club_id, action: 'session.move', target_type: 'session', target_id: id, old_value: { device: from.name }, new_value: { device: to.name } }, tx);
       });
@@ -328,6 +437,7 @@ export class SessionsService {
     if (!LIVE.includes(s.status)) throw new AppException('CONFLICT', `Session is already ${s.status}`);
     const now = new Date();
     const ctx = await this.bookings.branchCtx(s.branch_id, { requireActive: false });
+    if (s.is_open) return this.stopOpen(s, dto, caller, now, ctx.settings.buffer_minutes);
     let overtime = 0;
     let overtimeAmount = 0n;
     if (s.expected_end_at && !dto.waive_overtime) {
@@ -340,10 +450,12 @@ export class SessionsService {
       }
     }
     await this.prisma.$transaction(async (tx) => {
-      await tx.sessions.update({
-        where: { id },
+      // Shartli yangilash: parallel stop'da faqat bittasi yakunlaydi (overtime/event/audit bir marta)
+      const done = await tx.sessions.updateMany({
+        where: { id, status: { in: LIVE } },
         data: { status: 'COMPLETED', ended_at: now, ended_by: caller.id, end_reason: dto.reason ? 'FORCE_STOPPED' : 'COMPLETED', overtime_minutes: overtime || null, paused_at: null },
       });
+      if (!done.count) throw new AppException('CONFLICT', 'Session is already stopped');
       if (overtime) await this.charge(tx, s, 'OVERTIME', overtime, overtimeAmount, caller.id, `Overtime ${overtime} min`);
       if (s.booking_item_id) await tx.booking_items.update({ where: { id: s.booking_item_id }, data: { active: false } });
       if (s.booking_id) {
@@ -359,6 +471,47 @@ export class SessionsService {
     const v = await this.view(id);
     this.emitLive(v, 'session.ended');
     return { ...v, overtime_minutes: overtime, overtime_amount: overtimeAmount };
+  }
+
+  /** VIP yakuni: haqiqiy o'ynalgan vaqt bo'yicha hisob, qurilma bo'shaydi, (ixtiyoriy) to'lov kassaga. */
+  private async stopOpen(s: Prisma.sessionsGetPayload<object>, dto: StopDto, caller: Caller, now: Date, bufferMinutes: number) {
+    const acc = await this.openAccrued(s, now);
+    // bookings/booking_items: end_at > start_at (DB check) — bir daqiqa ichida yopilsa ham
+    const endAt = new Date(Math.max(now.getTime(), (s.started_at ?? now).getTime() + 60_000));
+    let paid = 0n;
+    await this.prisma.$transaction(async (tx) => {
+      const done = await tx.sessions.updateMany({
+        where: { id: s.id, status: { in: LIVE } },
+        data: { status: 'COMPLETED', ended_at: now, ended_by: caller.id, end_reason: dto.reason ? 'FORCE_STOPPED' : 'COMPLETED', paused_at: null, ...(s.status === 'PAUSED' && s.paused_at ? { total_paused_seconds: { increment: Math.round((now.getTime() - s.paused_at.getTime()) / 1000) } } : {}) },
+      });
+      if (!done.count) throw new AppException('CONFLICT', 'Session is already stopped');
+      if (s.booking_item_id) {
+        await tx.booking_items.update({ where: { id: s.booking_item_id }, data: { end_at: endAt, blocked_until: new Date(endAt.getTime() + bufferMinutes * 60_000), price_amount: acc.amount, active: false } });
+      }
+      await this.charge(tx, s, 'OPEN_TIME', acc.billable_minutes, acc.amount, caller.id, `VIP ${acc.billable_minutes} min`);
+      if (s.booking_id) {
+        const b = await tx.bookings.findUniqueOrThrow({ where: { id: s.booking_id } });
+        await tx.bookings.update({ where: { id: s.booking_id }, data: { end_at: endAt > b.end_at ? endAt : b.end_at, duration_minutes: Math.max(b.duration_minutes, acc.billable_minutes) } });
+        const live = await tx.sessions.count({ where: { booking_id: s.booking_id, status: { in: LIVE } } });
+        if (!live) await tx.bookings.update({ where: { id: s.booking_id }, data: { status: 'COMPLETED' } });
+        await tx.booking_events.create({ data: { id: uuidv7(), booking_id: s.booking_id, type: 'SESSION_ENDED', actor_id: caller.id, data: { session_id: s.id, open: true, minutes: acc.billable_minutes, amount: Number(acc.amount), reason: dto.reason ?? null } } });
+        if (dto.payment_method && dto.payment_method !== 'LATER') {
+          const fresh = await tx.bookings.findUniqueOrThrow({ where: { id: s.booking_id } });
+          const due = fresh.total_amount - fresh.paid_amount;
+          if (due > 0n) {
+            const shift = await this.finance.openShift(tx, caller.id, s.branch_id);
+            await this.finance.recordOffline(tx, { club_id: s.club_id, branch_id: s.branch_id, booking_id: s.booking_id, session_id: s.id, user_id: s.customer_id, amount: due, method: dto.payment_method, operator_id: caller.id, shift_id: shift.id });
+            paid = due;
+          }
+        }
+      }
+      await this.audit.log({ actor_id: caller.id, club_id: s.club_id, action: 'session.stop_open', target_type: 'session', target_id: s.id, new_value: { minutes: acc.billable_minutes, amount: Number(acc.amount), paid: Number(paid), method: dto.payment_method ?? null, reason: dto.reason } }, tx);
+    });
+    const device = await this.prisma.devices.findUnique({ where: { id: s.device_id } });
+    await this.notifications.notify([s.customer_id], 'SESSION_ENDED_OPEN', { device: device?.name ?? '', minutes: acc.billable_minutes, amount: fmtMoney(acc.amount) }, { session_id: s.id, booking_id: s.booking_id });
+    const v = await this.view(s.id);
+    this.emitLive(v, 'session.ended');
+    return { ...v, overtime_minutes: 0, overtime_amount: 0n, open_minutes: acc.billable_minutes, open_amount: acc.amount, paid_amount: paid };
   }
 
   // ---------- O'qish / live board ----------
@@ -407,6 +560,7 @@ export class SessionsService {
     const customers = await this.prisma.users.findMany({ where: { id: { in: customerIds } }, select: { id: true, first_name: true, last_name: true } });
     const cName = new Map(customers.map((c) => [c.id, [c.first_name, c.last_name].filter(Boolean).join(' ') || null]));
     const bById = new Map(bookings.map((b) => [b.id, b]));
+    const openAcc = new Map(await Promise.all(sessions.filter((x) => x.is_open).map(async (x) => [x.id, await this.openAccrued(x, now)] as const)));
     const nowMs = now.getTime();
     const board = devices.map((d) => {
       const s = sessions.find((x) => x.device_id === d.id);
@@ -424,7 +578,13 @@ export class SessionsService {
               id: s.id, status: s.status, started_at: s.started_at, expected_end_at: s.expected_end_at, booking_id: s.booking_id, booking_code: sb?.code ?? null,
               customer_name: (sb?.customer_id ? cName.get(sb.customer_id) : null) ?? sb?.guest_name ?? null,
               remaining_seconds: s.expected_end_at ? Math.round((s.expected_end_at.getTime() + pausedExtra - nowMs) / 1000) : null,
-              amount_due: sb ? sb.total_amount - sb.paid_amount : 0n,
+              is_open: s.is_open,
+              must_end_by: s.must_end_by,
+              paused_at: s.paused_at,
+              total_paused_seconds: s.total_paused_seconds,
+              elapsed_seconds: openAcc.get(s.id)?.elapsed_seconds ?? null,
+              accrued_amount: openAcc.get(s.id)?.amount ?? null,
+              amount_due: (sb ? sb.total_amount - sb.paid_amount : 0n) + (openAcc.get(s.id)?.amount ?? 0n),
             }
           : null,
         next_booking: next

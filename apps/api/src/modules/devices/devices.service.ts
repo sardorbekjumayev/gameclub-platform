@@ -11,10 +11,16 @@ import { EntitlementsService } from '../clubs/entitlements.service';
 import { assertCan } from '../rbac/access';
 import { Grant } from '../rbac/rbac.service';
 import {
-  BulkDevicesDto, CategoryDto, DeviceDto, DeviceStatusDto, LayoutDto, MaintenanceDto, TariffDto, UpdateDeviceDto, UpdateMaintenanceDto, UpdateTariffDto,
+  BulkDevicesDto, CategoryDto, DeviceDto, DeviceStatusDto, LayoutDto, MaintenanceDto, TariffDto, TariffPackageDto, UpdateDeviceDto, UpdateMaintenanceDto, UpdateTariffDto,
 } from './dto/devices.dto';
 
 const LIVE_BOOKING = ['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'ACTIVE'];
+
+/** Tarif + qoidalar + paketlar (ommaviy — faqat faol paketlar). */
+const TARIFF_INCLUDE = (publicOnly: boolean) => ({
+  rules: true,
+  packages: { where: { deleted_at: null, ...(publicOnly ? { is_active: true } : {}) }, orderBy: [{ position: 'asc' as const }, { duration_minutes: 'asc' as const }] },
+});
 
 @Injectable()
 export class DevicesService {
@@ -33,18 +39,22 @@ export class DevicesService {
     return d;
   }
 
-  private async assertRefs(branch: { id: string; club_id: string }, roomId?: string | null, categoryId?: string | null) {
+  private async assertRefs(branch: { id: string; club_id: string }, roomId?: string | null, categoryId?: string | null, deviceId?: string | null) {
     if (roomId && !(await this.prisma.rooms.findFirst({ where: { id: roomId, branch_id: branch.id, deleted_at: null } }))) {
       throw new AppException('VALIDATION_ERROR', 'Room does not belong to this branch', { field: 'room_id' });
     }
     if (categoryId && !(await this.prisma.device_categories.findFirst({ where: { id: categoryId, club_id: branch.club_id, deleted_at: null } }))) {
       throw new AppException('VALIDATION_ERROR', 'Category does not belong to this club', { field: 'category_id' });
     }
+    if (deviceId && !(await this.prisma.devices.findFirst({ where: { id: deviceId, branch_id: branch.id, deleted_at: null } }))) {
+      throw new AppException('VALIDATION_ERROR', 'Device does not belong to this branch', { field: 'device_id' });
+    }
   }
 
   // ---------- Kategoriyalar ----------
   async categories(branchId: string, grants: Grant[] | null) {
-    const b = grants ? await this.branches.load(branchId, grants, 'devices.view') : await this.prisma.branches.findFirstOrThrow({ where: { id: branchId } });
+    const b = grants ? await this.branches.load(branchId, grants, 'devices.view') : await this.prisma.branches.findFirst({ where: { id: branchId, deleted_at: null } });
+    if (!b) throw new AppException('NOT_FOUND', 'Branch not found');
     return this.prisma.device_categories.findMany({ where: { club_id: b.club_id, deleted_at: null, OR: [{ branch_id: null }, { branch_id: b.id }] }, orderBy: { position: 'asc' } });
   }
 
@@ -89,7 +99,7 @@ export class DevicesService {
   /** Ommaviy qisqa ro'yxat (tur, kategoriya, specs). */
   async listPublic(branchId: string) {
     return this.prisma.devices.findMany({
-      where: { branch_id: branchId, deleted_at: null, operational_status: { not: 'DISABLED' }, branch: { status: 'ACTIVE', deleted_at: null } },
+      where: { branch_id: branchId, deleted_at: null, operational_status: { not: 'DISABLED' }, branch: { status: 'ACTIVE', deleted_at: null, club: { status: 'ACTIVE', deleted_at: null } } },
       orderBy: [{ position_order: 'asc' }, { name: 'asc' }],
       select: { id: true, name: true, type: true, specs: true, room_id: true, category_id: true, layout: true, operational_status: true },
     });
@@ -139,7 +149,14 @@ export class DevicesService {
   async update(id: string, dto: UpdateDeviceDto, grants: Grant[], actor: Actor) {
     const d = await this.loadDevice(id, grants, 'devices.update');
     await this.assertRefs({ id: d.branch_id, club_id: d.club_id }, dto.room_id, dto.category_id);
-    const u = await this.prisma.devices.update({ where: { id }, data: { ...dto, specs: dto.specs as Prisma.InputJsonValue } });
+    let u;
+    try {
+      u = await this.prisma.devices.update({ where: { id }, data: { ...dto, specs: dto.specs as Prisma.InputJsonValue } });
+    } catch (e) {
+      // Nom filial ichida takrorlanmasin (devices_branch_name_uq) — 500 emas, 409
+      if ((e as { code?: string }).code === 'P2002') throw new AppException('CONFLICT', 'Device name already exists in this branch');
+      throw e;
+    }
     await this.audit.log({ actor_id: actor.id, club_id: d.club_id, action: 'device.update', target_type: 'device', target_id: id, new_value: dto, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
     return u;
   }
@@ -233,13 +250,45 @@ export class DevicesService {
     return this.prisma.tariffs.findMany({
       where: { branch_id: branchId, deleted_at: null, ...(grants ? {} : { is_active: true }) },
       orderBy: [{ priority: 'desc' }, { created_at: 'asc' }],
-      include: { rules: true },
+      include: TARIFF_INCLUDE(!grants),
     });
   }
 
+  /** Ommaviy: faol paketlar + oddiy narx (tejashni ko'rsatish uchun, tarif oynalarisiz). */
+  async packages(branchId: string) {
+    const rows = await this.prisma.tariff_packages.findMany({
+      where: { branch_id: branchId, deleted_at: null, is_active: true, tariff: { deleted_at: null, is_active: true } },
+      orderBy: [{ position: 'asc' }, { duration_minutes: 'asc' }],
+      include: { tariff: { select: { id: true, name: true, price_per_hour: true, room_id: true, category_id: true, device_type: true, device_id: true } } },
+    });
+    return rows.map((p) => ({ ...p, regular_amount: (BigInt(p.duration_minutes) * p.tariff.price_per_hour + 59n) / 60n }));
+  }
+
+  /** Paketlar ro'yxatini to'liq almashtirish: id bor — yangilash, yangi — yaratish, yo'qlari — soft-delete. */
+  private async syncPackages(tx: Prisma.TransactionClient, t: { id: string; club_id: string; branch_id: string }, list: TariffPackageDto[]) {
+    for (const p of list) {
+      if (!p.start_time !== !p.end_time) throw new AppException('VALIDATION_ERROR', 'Package window needs both start_time and end_time', { field: 'packages', reason: 'PACKAGE_WINDOW' });
+    }
+    const existing = await tx.tariff_packages.findMany({ where: { tariff_id: t.id, deleted_at: null }, select: { id: true } });
+    const ids = new Set(existing.map((e) => e.id));
+    const bad = list.find((p) => p.id && !ids.has(p.id));
+    if (bad) throw new AppException('VALIDATION_ERROR', 'Package does not belong to this tariff', { field: 'packages', reason: 'PACKAGE_NOT_FOUND', id: bad.id });
+    const keep = new Set(list.filter((p) => p.id).map((p) => p.id!));
+    await tx.tariff_packages.updateMany({ where: { tariff_id: t.id, deleted_at: null, id: { notIn: [...keep] } }, data: { deleted_at: new Date(), is_active: false } });
+    for (const [position, p] of list.entries()) {
+      const data = {
+        name: p.name, duration_minutes: p.duration_minutes, price: BigInt(p.price), days_of_week: p.days_of_week ?? [],
+        start_time: p.start_time ?? null, end_time: p.end_time ?? null, is_active: p.is_active ?? true, position,
+      };
+      if (p.id) await tx.tariff_packages.update({ where: { id: p.id }, data });
+      else await tx.tariff_packages.create({ data: { ...data, id: uuidv7(), tariff_id: t.id, club_id: t.club_id, branch_id: t.branch_id } });
+    }
+  }
+
   private tariffData(dto: Partial<TariffDto>) {
-    const { rules, valid_from, valid_to, price_per_hour, ...rest } = dto;
+    const { rules, packages, valid_from, valid_to, price_per_hour, ...rest } = dto;
     void rules;
+    void packages;
     return {
       ...rest,
       ...(price_per_hour !== undefined ? { price_per_hour: BigInt(price_per_hour) } : {}),
@@ -257,30 +306,34 @@ export class DevicesService {
 
   async createTariff(branchId: string, dto: TariffDto, grants: Grant[], actor: Actor) {
     const b = await this.branches.load(branchId, grants, 'tariffs.create');
-    await this.assertRefs(b, dto.room_id, dto.category_id);
+    await this.assertRefs(b, dto.room_id, dto.category_id, dto.device_id);
     const id = uuidv7();
     const t = await this.prisma.$transaction(async (tx) => {
       const created = await tx.tariffs.create({ data: { ...this.tariffData(dto), id, club_id: b.club_id, branch_id: b.id, name: dto.name, price_per_hour: BigInt(dto.price_per_hour) } });
       if (dto.rules?.length) await tx.tariff_rules.createMany({ data: this.ruleRows(id, dto.rules) });
+      if (dto.packages?.length) await this.syncPackages(tx, created, dto.packages);
       return created;
     });
     await this.audit.log({ actor_id: actor.id, club_id: b.club_id, action: 'tariff.create', target_type: 'tariff', target_id: t.id, new_value: dto, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
-    return this.prisma.tariffs.findUnique({ where: { id }, include: { rules: true } });
+    return this.prisma.tariffs.findUnique({ where: { id }, include: TARIFF_INCLUDE(false) });
   }
 
   async updateTariff(id: string, dto: UpdateTariffDto, grants: Grant[], actor: Actor) {
-    const t = await this.prisma.tariffs.findFirst({ where: { id, deleted_at: null }, include: { rules: true } });
+    const t = await this.prisma.tariffs.findFirst({ where: { id, deleted_at: null }, include: TARIFF_INCLUDE(false) });
     if (!t) throw new AppException('NOT_FOUND', 'Tariff not found');
     assertCan(grants, 'tariffs.update', { club_id: t.club_id, branch_id: t.branch_id });
+    // Xona/kategoriya/qurilma faqat shu filial (klub)niki bo'lishi shart
+    await this.assertRefs({ id: t.branch_id, club_id: t.club_id }, dto.room_id, dto.category_id, dto.device_id);
     await this.prisma.$transaction(async (tx) => {
       await tx.tariffs.update({ where: { id }, data: this.tariffData(dto) });
       if (dto.rules) {
         await tx.tariff_rules.deleteMany({ where: { tariff_id: id } });
         await tx.tariff_rules.createMany({ data: this.ruleRows(id, dto.rules) });
       }
+      if (dto.packages) await this.syncPackages(tx, t, dto.packages);
     });
     await this.audit.log({ actor_id: actor.id, club_id: t.club_id, action: 'tariff.update', target_type: 'tariff', target_id: id, old_value: t, new_value: dto, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id });
-    return this.prisma.tariffs.findUnique({ where: { id }, include: { rules: true } });
+    return this.prisma.tariffs.findUnique({ where: { id }, include: TARIFF_INCLUDE(false) });
   }
 
   async roomTariff(roomId: string, tariffId: string | null, grants: Grant[], actor: Actor) {

@@ -122,6 +122,8 @@ export class FinanceService {
    * aks holda online to'lov uchun provider.refund chaqiriladi (COMPLETED yoki kabinetda qo'lda — PENDING).
    */
   async refundPayment(tx: Tx, paymentId: string, amount: bigint, reason: string, actorId: string | null, policySnapshot?: unknown, providerDone = false) {
+    // Parallel refundlar navbatlanadi: qoldiq qulflangan qatordan o'qiladi — to'langandan ko'p qaytarilmasin
+    await tx.$queryRaw`SELECT id FROM payments WHERE id = ${paymentId}::uuid FOR UPDATE`;
     const p = await tx.payments.findUniqueOrThrow({ where: { id: paymentId } });
     const available = p.amount - p.refunded_amount;
     if (!['PAID', 'PARTIALLY_REFUNDED'].includes(p.status) || amount > available || amount <= 0n) {

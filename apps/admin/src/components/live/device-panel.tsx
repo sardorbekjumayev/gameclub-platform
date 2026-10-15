@@ -5,11 +5,16 @@ import { useState } from "react";
 import { Alert, Button, Field, Input, Select, cx } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session } from "@/lib/session";
-import type { LiveDevice } from "@/lib/types";
-import { idemKey, normalizePhone } from "@/lib/use-api";
+import type { LiveDevice, TariffPackage } from "@/lib/types";
+import { idemKey, normalizePhone, useApi } from "@/lib/use-api";
 import { fmtClock, fmtTime } from "./time";
 
 type Pay = "CASH" | "TERMINAL" | "LATER";
+/** Muvaffaqiyat matni — statik yoki API javobidan (masalan VIP yakunidagi summa). */
+export type Success = string | ((data: unknown) => string);
+type Run = (name: string, fn: () => Promise<unknown>, success?: Success) => Promise<void>;
+/** VIP (ochiq vaqt) — davomiylik tanlovidagi alohida variant. */
+const OPEN = "OPEN" as const;
 const DURATIONS = [30, 60, 90, 120, 180, 240, 300, 360] as const;
 
 /** Xato kodi SHIFT_REQUIRED bo'lsa — kassa smenasini ochishga yo'naltirish. */
@@ -72,12 +77,12 @@ export function DevicePanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function run(name: string, fn: () => Promise<unknown>, success?: string) {
+  async function run(name: string, fn: () => Promise<unknown>, success?: Success) {
     setBusy(name);
     setError(null);
     try {
-      await fn();
-      onDone(success);
+      const r = await fn();
+      onDone(typeof success === "function" ? success((r as { data?: unknown })?.data) : success);
     } catch (e) {
       if (isShiftRequired(e)) onShiftRequired();
       else setError(errorText(e));
@@ -96,7 +101,11 @@ export function DevicePanel({
         </div>
       )}
       {device.occupancy === "OCCUPIED" && device.session ? (
-        <SessionActions device={device} freeDevices={freeDevices} now={now} busy={busy} run={run} />
+        device.session.is_open ? (
+          <OpenSessionActions device={device} freeDevices={freeDevices} now={now} busy={busy} run={run} />
+        ) : (
+          <SessionActions device={device} freeDevices={freeDevices} now={now} busy={busy} run={run} />
+        )
       ) : device.occupancy === "UNAVAILABLE" ? (
         <Alert tone="info">{t("live.unavailableInfo", { status: t(`status.${device.operational_status}` as never) })}</Alert>
       ) : (
@@ -127,7 +136,7 @@ export function DevicePanel({
               )}
             </div>
           )}
-          <WalkInForm branchId={branchId} deviceIds={[device.id]} busy={busy === "walkin"} run={run} />
+          <WalkInForm branchId={branchId} deviceIds={[device.id]} nextBookingAt={device.next_booking?.start_at ?? null} busy={busy === "walkin"} run={run} />
         </div>
       )}
     </Modal>
@@ -137,16 +146,23 @@ export function DevicePanel({
 export function WalkInForm({
   branchId,
   deviceIds,
+  nextBookingAt = null,
   busy,
   run,
 }: {
   branchId: string;
   deviceIds: string[];
+  /** Shu qurilmadagi keyingi bron — VIP shu vaqtgacha davom eta oladi */
+  nextBookingAt?: string | null;
   busy: boolean;
-  run: (name: string, fn: () => Promise<unknown>, success?: string) => Promise<void>;
+  run: Run;
 }) {
-  const { t } = useI18n();
-  const [duration, setDuration] = useState<number>(60);
+  const { t, locale } = useI18n();
+  const packages = useApi<TariffPackage[]>(`/branches/${branchId}/packages`);
+  const [duration, setDuration] = useState<number | typeof OPEN>(60);
+  /** Paket tanlansa davomiylik va narx paketdan (API qurilmaga mosligini tekshiradi) */
+  const [packageId, setPackageId] = useState<string | null>(null);
+  const open = duration === OPEN && !packageId;
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [pay, setPay] = useState<Pay>("CASH");
@@ -164,30 +180,69 @@ export function WalkInForm({
               {
                 branch_id: branchId,
                 device_ids: deviceIds,
-                duration_minutes: duration,
-                payment_method: pay,
+                ...(open
+                  ? { open: true, payment_method: "LATER" }
+                  : packageId
+                    ? { package_id: packageId, payment_method: pay }
+                    : { duration_minutes: duration, payment_method: pay }),
                 ...(name.trim() && { guest_name: name.trim() }),
                 ...(phone.trim() && { guest_phone: normalizePhone(phone) }),
               },
               { "Idempotency-Key": idemKey() },
             ),
-          t("live.sessionStarted"),
+          open ? t("live.vip.started") : t("live.sessionStarted"),
         );
       }}
     >
       <div className="text-sm font-bold">{t("live.walkIn")}</div>
+      <button
+        type="button"
+        onClick={() => {
+          setDuration(OPEN);
+          setPackageId(null);
+        }}
+        className={cx("flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left", open ? "bg-accent text-on-accent" : "border border-line bg-surface")}
+      >
+        <span>
+          <span className="block font-bold">{t("live.vip.title")}</span>
+          <span className={cx("block text-xs", open ? "text-on-accent/80" : "text-muted")}>{t("live.vip.hint")}</span>
+        </span>
+        <span className="font-display text-xl font-bold">∞</span>
+      </button>
       <div className="grid grid-cols-4 gap-2">
         {DURATIONS.map((m) => (
           <button
             key={m}
             type="button"
-            onClick={() => setDuration(m)}
-            className={cx("h-10 rounded-xl text-sm font-bold", duration === m ? "bg-accent text-on-accent" : "border border-line bg-surface")}
+            onClick={() => {
+              setDuration(m);
+              setPackageId(null);
+            }}
+            className={cx("h-10 rounded-xl text-sm font-bold", duration === m && !packageId ? "bg-accent text-on-accent" : "border border-line bg-surface")}
           >
             {m < 60 ? t("live.minN", { n: m }) : t("quote.hoursN", { n: m / 60 })}
           </button>
         ))}
       </div>
+      {!!packages.data?.length && (
+        <div className="space-y-2">
+          <div className="text-xs font-bold uppercase tracking-wide text-muted">{t("live.packages")}</div>
+          <div className="grid grid-cols-2 gap-2">
+            {packages.data.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPackageId(p.id)}
+                className={cx("rounded-xl px-3 py-2 text-left", packageId === p.id ? "bg-accent text-on-accent" : "border border-line bg-surface")}
+              >
+                <span className="block text-sm font-bold">{p.name}</span>
+                {p.tariff && <span className={cx("block truncate text-xs", packageId === p.id ? "text-on-accent/80" : "text-muted")}>{p.tariff.name}</span>}
+                <span className={cx("block text-xs tabular-nums", packageId === p.id ? "text-on-accent/80" : "text-muted")}>{formatMoney(p.price, locale)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label={t("live.guestName")}>
           <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
@@ -196,11 +251,18 @@ export function WalkInForm({
           <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+998" />
         </Field>
       </div>
-      <Field label={t("live.payment")}>
-        <PayPicker value={pay} onChange={setPay} />
-      </Field>
+      {open ? (
+        <>
+          <Alert tone="info">{t("live.vip.payLater")}</Alert>
+          {nextBookingAt && <Alert>{t("live.vip.limitWarn", { time: fmtTime(nextBookingAt) })}</Alert>}
+        </>
+      ) : (
+        <Field label={t("live.payment")}>
+          <PayPicker value={pay} onChange={setPay} />
+        </Field>
+      )}
       <Button type="submit" size="lg" className="w-full" loading={busy}>
-        {t("live.startSession")}
+        {open ? t("live.vip.start") : t("live.startSession")}
       </Button>
     </form>
   );
@@ -217,7 +279,7 @@ function SessionActions({
   freeDevices: LiveDevice[];
   now: number;
   busy: string | null;
-  run: (name: string, fn: () => Promise<unknown>, success?: string) => Promise<void>;
+  run: Run;
 }) {
   const { t, locale } = useI18n();
   const s = device.session!;
@@ -324,6 +386,97 @@ function SessionActions({
       </div>
     </div>
   );
+}
+
+/** VIP (ochiq vaqt): taymer oldinga sanaydi, summa server hisobi (snapshot), yakunda to'lov. */
+function OpenSessionActions({ device, freeDevices, now, busy, run }: { device: LiveDevice; freeDevices: LiveDevice[]; now: number; busy: string | null; run: Run }) {
+  const { t, locale } = useI18n();
+  const s = device.session!;
+  const [moveTo, setMoveTo] = useState(freeDevices[0]?.id ?? "");
+  const [pay, setPay] = useState<Pay>("CASH");
+  const elapsed = elapsedNow(device, now) ?? 0;
+  const limitLeft = s.must_end_by ? Math.round((new Date(s.must_end_by).getTime() - now) / 1000) : null;
+  const key = () => ({ "Idempotency-Key": idemKey() });
+  const accrued = s.accrued_amount ?? 0;
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl bg-surface-2 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-bold">{s.customer_name ?? t("live.guest")}</span>
+          <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-on-accent">VIP</span>
+        </div>
+        <div className="mt-1 font-display text-4xl font-bold tabular-nums">{fmtClock(elapsed)}</div>
+        <div className="mt-1 text-xs text-muted">
+          {t("live.startedAt", { time: fmtTime(s.started_at) })}
+          {s.status === "PAUSED" && ` · ${t("status.PAUSED")}`}
+        </div>
+        <div className="mt-2 text-lg font-bold text-accent">{t("live.vip.accrued", { amount: formatMoney(accrued, locale) })}</div>
+        {limitLeft !== null && (
+          <div className={cx("mt-2 text-sm font-bold", limitLeft < 15 * 60 ? "text-danger-soft" : "text-warn")}>
+            {t("live.vip.limit", { time: fmtTime(s.must_end_by!) })}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        {s.status === "PAUSED" ? (
+          <Button variant="secondary" loading={busy === "resume"} onClick={() => run("resume", () => session.post(`/sessions/${s.id}/resume`, {}, key()))}>
+            {t("live.resume")}
+          </Button>
+        ) : (
+          <Button variant="secondary" loading={busy === "pause"} onClick={() => run("pause", () => session.post(`/sessions/${s.id}/pause`, {}, key()))}>
+            {t("live.pause")}
+          </Button>
+        )}
+        <div className="flex gap-2">
+          <Select className="h-11 min-w-0 flex-1 text-sm" value={moveTo} onChange={(e) => setMoveTo(e.target.value)} disabled={freeDevices.length === 0}>
+            {freeDevices.length === 0 && <option value="">{t("live.noFree")}</option>}
+            {freeDevices.map((d) => (
+              <option key={d.id} value={d.id}>
+                → {d.name}
+              </option>
+            ))}
+          </Select>
+          <Button variant="secondary" disabled={!moveTo} loading={busy === "move"} onClick={() => run("move", () => session.post(`/sessions/${s.id}/move`, { to_device_id: moveTo }, key()), t("live.moved"))}>
+            {t("live.move")}
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-2 border-t border-line-soft pt-4">
+        <div className="text-sm font-bold">{t("live.vip.finish")}</div>
+        <PayPicker value={pay} onChange={setPay} />
+        <Button
+          variant="danger"
+          className="w-full"
+          loading={busy === "stop"}
+          onClick={() =>
+            confirm(t("live.vip.confirmStop", { name: device.name })) &&
+            run(
+              "stop",
+              () => session.post(`/sessions/${s.id}/stop`, { payment_method: pay }, key()),
+              (data) => {
+                const r = data as { open_minutes?: number; open_amount?: number };
+                return t("live.vip.stopped", { minutes: r.open_minutes ?? 0, amount: formatMoney(r.open_amount ?? 0, locale) });
+              },
+            )
+          }
+        >
+          {t("live.vip.stop")}
+        </Button>
+        <p className="text-xs text-muted">{t("live.vip.finalHint")}</p>
+      </div>
+    </div>
+  );
+}
+
+/** VIP: boshlangandan beri o'ynalgan soniyalar (pauzalar chiqarilgan, pauzada to'xtaydi). */
+export function elapsedNow(d: LiveDevice, now: number) {
+  const s = d.session;
+  if (!s?.is_open) return null;
+  const until = s.status === "PAUSED" && s.paused_at ? new Date(s.paused_at).getTime() : now;
+  return Math.max(0, Math.round((until - new Date(s.started_at).getTime()) / 1000) - (s.total_paused_seconds ?? 0));
 }
 
 /** Snapshot olingandan beri o'tgan vaqtni hisobga olgan qolgan soniyalar (pauzada to'xtaydi). */

@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { BookingWidget } from "@/components/booking-widget";
 import { BranchReviews } from "@/components/branch-reviews";
 import { FavoriteButton, useFavorites } from "@/components/favorite-button";
@@ -101,7 +102,7 @@ export default function BranchPage() {
   const rangeLabel = (w: { open: string; close: string }) => `${w.open}–${w.close}${w.close <= w.open ? ` (${t("branch.nextDay")})` : ""}`;
 
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-8">
+    <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-8 pb-28 sm:px-8 lg:pb-8">
       <Link href="/clubs" className="text-sm text-muted hover:text-fg">
         ← {t("clubs.title")}
       </Link>
@@ -374,7 +375,55 @@ export default function BranchPage() {
           <BookingWidget branch={b} />
         </div>
       </div>
+      <BookBar priceFrom={priceFrom} />
     </main>
+  );
+}
+
+/**
+ * Telefon/planshetda bron vidjeti sahifa oxirida — asosiy amal doim ko'rinib tursin.
+ * Vidjet ekranga chiqqanda panel yashirinadi.
+ */
+function BookBar({ priceFrom }: { priceFrom: number | null }) {
+  const { t, locale } = useI18n();
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    const el = document.getElementById("book");
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setHidden(e.isIntersecting), { threshold: 0.15 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <div
+      className={cx(
+        "fixed inset-x-0 z-20 px-4 transition duration-200 lg:hidden",
+        "bottom-[calc(4.25rem+env(safe-area-inset-bottom))] md:bottom-4",
+        hidden && "pointer-events-none translate-y-4 opacity-0",
+      )}
+      aria-hidden={hidden}
+    >
+      <div className="mx-auto flex max-w-xl items-center gap-3 rounded-2xl border border-line bg-surface/95 p-2.5 pl-4 shadow-2xl backdrop-blur-xl">
+        <div className="min-w-0 flex-1 leading-tight">
+          {priceFrom != null ? (
+            <>
+              <div className="font-display text-lg font-bold tabular-nums">{formatMoney(priceFrom, locale)}</div>
+              <div className="text-xs text-muted">{t("branch.perHour")}</div>
+            </>
+          ) : (
+            <div className="text-sm font-semibold">{t("book.title")}</div>
+          )}
+        </div>
+        <button
+          type="button"
+          tabIndex={hidden ? -1 : 0}
+          onClick={() => document.getElementById("book")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="h-12 shrink-0 rounded-xl bg-accent px-6 font-bold text-on-accent transition hover:bg-accent-hover"
+        >
+          {t("book.title")}
+        </button>
+      </div>
+    </div>
   );
 }
 

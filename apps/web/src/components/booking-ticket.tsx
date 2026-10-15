@@ -63,11 +63,13 @@ export function BookingTicket({ booking: b, qrImg, showQr }: { booking: BookingD
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-2 px-5">
+      <div className="grid grid-cols-2 gap-2 px-5 sm:grid-cols-3">
         <Cell icon={CalendarDays} label={t("ticket.date")} value={fmtDate(b.start_at, t, tz)} />
-        <Cell icon={Clock} label={t("ticket.time")} value={`${fmtTime(b.start_at, tz)}–${fmtTime(b.end_at, tz)}`} />
-        <Cell icon={Hourglass} label={t("ticket.duration")} value={durationLabel(b.duration_minutes, t)} />
+        <Cell icon={Clock} label={t("ticket.time")} value={b.is_open && b.status !== "COMPLETED" ? `${fmtTime(b.start_at, tz)}–…` : `${fmtTime(b.start_at, tz)}–${fmtTime(b.end_at, tz)}`} />
+        <Cell className="col-span-2 sm:col-span-1" icon={Hourglass} label={t("ticket.duration")} value={b.is_open && b.status !== "COMPLETED" ? "VIP ∞" : durationLabel(b.duration_minutes, t)} />
       </div>
+      {b.package && <p className="px-5 pt-3 text-center text-xs font-semibold text-accent">{t("ticket.package", { name: b.package.name })}</p>}
+      {b.is_open && b.status !== "COMPLETED" && <p className="px-5 pt-3 text-center text-xs font-semibold text-accent">{t("booking.vipTicket")}</p>}
 
       <section className="px-5 pt-4">
         <div className="mb-2 text-[13px] font-bold">
@@ -129,18 +131,25 @@ export function BookingTicket({ booking: b, qrImg, showQr }: { booking: BookingD
       <div className="p-5 pt-4">
         <RefundPolicy policy={b.cancellation_policy} preview={b.can_cancel ? b.refund_preview : null} paid={b.paid_amount} />
       </div>
+
+      <footer className="flex items-center justify-between border-t border-line-soft px-5 py-3">
+        <span className="font-display text-sm font-bold tracking-wide text-accent">
+          ZON<span className="text-fg">UP</span>
+        </span>
+        <span className="text-xs font-semibold text-muted">zonup.uz</span>
+      </footer>
     </article>
   );
 }
 
-function Cell({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }) {
+function Cell({ icon: Icon, label, value, className }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; className?: string }) {
   return (
-    <div className="rounded-2xl bg-surface-2 px-3 py-2.5">
+    <div className={cx("rounded-2xl bg-surface-2 px-3 py-2.5", className)}>
       <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
         <Icon className="h-3.5 w-3.5" />
         {label}
       </div>
-      <div className="mt-0.5 font-display text-base font-bold tabular-nums sm:text-lg">{value}</div>
+      <div className="mt-0.5 font-display text-base font-bold whitespace-nowrap tabular-nums sm:text-lg">{value}</div>
     </div>
   );
 }

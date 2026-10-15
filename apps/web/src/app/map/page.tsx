@@ -90,7 +90,11 @@ export default function MapPage() {
     );
   }, [showAll]);
 
-  useEffect(locate, [locate]);
+  // Birinchi joylashuv so'rovi — natija geolocation callback'ida keladi.
+  useEffect(() => {
+    const id = setTimeout(locate, 0);
+    return () => clearTimeout(id);
+  }, [locate]);
 
   const items = useMemo(() => {
     const list = state.status === "ready" ? state.items : [];

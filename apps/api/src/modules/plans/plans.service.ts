@@ -128,6 +128,8 @@ export class PlansService {
     if (!club) throw new AppException('NOT_FOUND', 'Club not found');
     const plan = await this.prisma.plans.findUnique({ where: { id: dto.plan_id } });
     if (!plan) throw new AppException('NOT_FOUND', 'Plan not found');
+    // Nofaol reja yangi klublarga biriktirilmaydi (mavjud obunalar o'z kuchida qoladi)
+    if (!plan.is_active) throw new AppException('VALIDATION_ERROR', 'Plan is inactive', { field: 'plan_id' });
     const now = new Date();
     const end = new Date(now.getTime() + dto.days * 86400_000);
     const sub = await this.prisma.$transaction(async (tx) => {

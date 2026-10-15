@@ -57,6 +57,8 @@ NEXT_PUBLIC_TOKEN_KEY=gc.web.tokens
 # Yandex: "JavaScript API va HTTP Geocoder" kaliti
 NEXT_PUBLIC_YANDEX_MAPS_KEY=${key}
 NEXT_PUBLIC_SITE_URL=http://localhost:4710
+# "Klub ochish" havolasi (prod: https://club.<domen>). Bo'sh bo'lsa havola ko'rsatilmaydi.
+NEXT_PUBLIC_CLUB_PANEL_URL=
 
 # Dev server boshqa host (IP/domen) orqali ochilsa, vergul bilan
 ALLOWED_DEV_ORIGINS=
@@ -148,7 +150,7 @@ async function askKey(current) {
 }
 
 // ---------- asosiy oqim ----------
-console.log(bold('\nGame Club — lokal sozlash'));
+console.log(bold('\nZonup — lokal sozlash'));
 
 step(1, 'Talablarni tekshirish');
 const major = Number(process.versions.node.split('.')[0]);

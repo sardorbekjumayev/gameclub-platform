@@ -144,7 +144,7 @@ export class StaffService {
       return row;
     });
     const link = `${this.config.get('ADMIN_APP_URL')}/invite?token=${token}`;
-    await this.sms.send(dto.phone, `Game Club: sizni xodim sifatida taklif qilishdi. ${link}`);
+    await this.sms.send(dto.phone, `Zonup: sizni xodim sifatida taklif qilishdi. ${link}`);
     const { token_hash, ...safe } = inv;
     // Havola faqat dev'da qaytariladi (SMS mock bo'lgani uchun); prod'da faqat SMS orqali.
     return { ...safe, role: dto.role, ...(this.config.get('NODE_ENV') !== 'production' ? { invite_url: link, token } : {}) };

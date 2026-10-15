@@ -127,11 +127,26 @@ export type Tariff = {
   priority: number;
   is_active: boolean;
   rules: TariffRule[];
+  packages?: TariffPackage[];
 };
 
-export type QuoteSegment = { from: string; to: string; rule: string; price_per_hour: number; minutes: number; amount: number };
+/** Paket: qat'iy davomiylik + qat'iy narx (masalan, 3 soat — 30 000). */
+export type TariffPackage = {
+  id: string;
+  name: string;
+  duration_minutes: number;
+  price: number;
+  days_of_week: number[];
+  start_time: string | null;
+  end_time: string | null;
+  is_active: boolean;
+  /** GET /branches/:id/packages javobida */
+  tariff?: { id: string; name: string };
+};
+
+export type QuoteSegment = { from: string; to: string; rule: string; price_per_hour: number; minutes: number; amount: number; package_id?: string };
 export type Quote = {
-  items: { device_id: string; name: string; tariff_name: string; amount: number; segments: QuoteSegment[] }[];
+  items: { device_id: string; name: string; tariff_name: string; amount: number; segments: QuoteSegment[]; package?: { id: string; name: string; regular_amount: number } }[];
   subtotal: number;
   discount: number;
   total: number;
@@ -159,6 +174,12 @@ export type LiveDevice = {
     customer_name: string | null;
     remaining_seconds: number | null;
     amount_due: number;
+    /** VIP / ochiq vaqt: tugash vaqti yo'q, yakunda haqiqiy vaqt bo'yicha to'lanadi */
+    is_open?: boolean;
+    must_end_by?: string | null;
+    paused_at?: string | null;
+    total_paused_seconds?: number;
+    accrued_amount?: number | null;
   } | null;
   next_booking: { id: string; code: string; status: string; start_at: string; end_at: string; customer_name: string | null } | null;
 };

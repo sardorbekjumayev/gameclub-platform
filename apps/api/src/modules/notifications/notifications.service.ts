@@ -22,7 +22,7 @@ const ANNOUNCEMENT_TYPES = new Set(['ANNOUNCEMENT']);
 /** Mijozning o'z broniga oid turlar — Telegram xabariga "Chiptani ko'rish" tugmasi qo'shiladi (xodim turlari emas). */
 const CUSTOMER_BOOKING_TYPES = new Set([
   'BOOKING_CREATED', 'BOOKING_CONFIRMED', 'BOOKING_CANCELLED', 'BOOKING_EXPIRED', 'BOOKING_REMINDER', 'NO_SHOW_WARNING',
-  'PAYMENT_SUCCESS', 'PAYMENT_FAILED', 'TRANSFER_REJECTED', 'REFUND_PENDING', 'REFUND_COMPLETED',
+  'PAYMENT_SUCCESS', 'PAYMENT_FAILED', 'TRANSFER_CONFIRMED', 'TRANSFER_REJECTED', 'REFUND_PENDING', 'REFUND_COMPLETED',
   'SESSION_STARTED', 'SESSION_ENDED', 'SESSION_ENDING_SOON',
 ]);
 
@@ -94,6 +94,12 @@ export class NotificationsService {
   }
 
   /** Klub xodimlari (shu permission bilan) — masalan NEW_BOOKING. */
+  /** Platforma xodimlari (SUPER_ADMIN/SUPPORT) — murojaatlar inbox'i. */
+  async notifyPlatformStaff(type: string, vars: Record<string, string | number>, data: Record<string, unknown> = {}, opts: NotifyOptions = {}) {
+    const roles = await this.prisma.user_roles.findMany({ where: { role: { code: { in: ['SUPER_ADMIN', 'SUPPORT'] } } }, select: { user_id: true } });
+    await this.notify(roles.map((r) => r.user_id), type, vars, data, opts);
+  }
+
   async notifyClubStaff(clubId: string, branchId: string | null, type: string, vars: Record<string, string | number>, data: Record<string, unknown> = {}, opts: NotifyOptions = {}) {
     const roles = await this.prisma.user_roles.findMany({
       where: { OR: [{ club_id: clubId, branch_id: null }, ...(branchId ? [{ branch_id: branchId }] : [])], role: { code: { in: ['CLUB_OWNER', 'CLUB_ADMIN', 'BRANCH_ADMIN'] } } },

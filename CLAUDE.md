@@ -1,4 +1,4 @@
-# CLAUDE.md — Game Club Platform
+# CLAUDE.md — Zonup Platform
 
 Bu fayl repo ildizida turadi. Har bir sessiyada birinchi o'qiladi.
 

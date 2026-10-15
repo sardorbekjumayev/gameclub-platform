@@ -94,6 +94,8 @@ export class BookingSettingsDto {
   @IsOptional() @IsBoolean() allow_category_booking?: boolean;
   @IsOptional() @IsBoolean() allow_specific_device?: boolean;
   @IsOptional() @IsBoolean() auto_no_show?: boolean;
+  @ApiPropertyOptional({ description: 'VIP (ochiq vaqt): minimal to\'lanadigan daqiqa' }) @IsOptional() @IsInt() @Min(0) @Max(240) open_min_minutes?: number;
+  @ApiPropertyOptional({ enum: [1, 5, 10, 15, 30], description: 'VIP (ochiq vaqt): yaxlitlash qadami' }) @IsOptional() @IsIn([1, 5, 10, 15, 30]) open_round_minutes?: number;
 }
 
 export class CreateBranchDto {

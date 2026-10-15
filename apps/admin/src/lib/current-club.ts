@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAuth } from "./session";
 import type { MyClub } from "./types";
 import { useApi } from "./use-api";
 
@@ -9,7 +10,10 @@ const listeners = new Set<(id: string) => void>();
 
 /** Panelda tanlangan joriy klub (bir nechta klub bo'lsa) — sidebar va dashboard uchun umumiy. */
 export function useCurrentClub() {
-  const res = useApi<MyClub[]>("/clubs/mine");
+  const { me, loading: authLoading } = useAuth();
+  // Kirmagan foydalanuvchi uchun so'rov yubormaymiz (aks holda har safar 401)
+  const res = useApi<MyClub[]>(me ? "/clubs/mine" : null);
+  const loading = authLoading || (!!me && res.loading) || (!!me && res.data === null && res.error === null);
   const [picked, setPicked] = useState<string | null>(() => {
     try {
       return localStorage.getItem(KEY);
@@ -38,5 +42,5 @@ export function useCurrentClub() {
     listeners.forEach((l) => l(id));
   };
 
-  return { ...res, clubs, club, select };
+  return { ...res, loading, clubs, club, select };
 }

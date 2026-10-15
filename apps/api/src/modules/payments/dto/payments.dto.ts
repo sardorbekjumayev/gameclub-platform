@@ -6,12 +6,12 @@ import { PageQuery } from '../../../common/dto/pagination.dto';
 export class CreatePaymentDto {
   @ApiProperty() @IsUUID() booking_id!: string;
   @ApiProperty({ enum: ['DEMO', 'PAYME', 'CLICK'], description: 'Yoqilganlari: GET /payments/providers' }) @IsIn(['DEMO', 'PAYME', 'CLICK']) provider!: string;
-  @ApiPropertyOptional() @IsOptional() @IsUrl({ require_tld: false, protocols: ['http', 'https', 'gameclub'], require_valid_protocol: true }) return_url?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUrl({ require_tld: false, protocols: ['http', 'https', 'zonup'], require_valid_protocol: true }) return_url?: string;
 }
 
 export class TransferPaymentDto {
   @ApiProperty() @IsUUID() booking_id!: string;
-  @ApiProperty({ description: "O'tkazgan odamning ismi (klub bank ilovasida solishtiradi)" }) @IsString() @MinLength(2) @MaxLength(80) payer_name!: string;
+  @ApiPropertyOptional({ description: "O'tkazgan odamning ismi (ixtiyoriy; klub bank ilovasida solishtiradi)" }) @IsOptional() @IsString() @MaxLength(80) payer_name?: string;
   @ApiProperty({ example: '4321', description: "Jo'natuvchi kartaning oxirgi 4 raqami" }) @Matches(/^\d{4}$/) payer_card_last4!: string;
 }
 
