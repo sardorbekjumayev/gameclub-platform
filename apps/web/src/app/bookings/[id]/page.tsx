@@ -4,7 +4,7 @@ import { formatMoney } from "@gc/types";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Download } from "lucide-react";
 import { BookingReview } from "@/components/booking-review";
 import { BookingTicket } from "@/components/booking-ticket";
@@ -17,7 +17,7 @@ import { Alert, Button, Spinner, cx } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session } from "@/lib/session";
 import type { BookingDetail, PaymentProvider } from "@/lib/types";
-import { idemKey, useApi } from "@/lib/use-api";
+import { idemKey, useApi, useSubmitKey } from "@/lib/use-api";
 
 const BLANK_PX = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
@@ -60,6 +60,8 @@ function Booking() {
   const transfer = b?.transfer ?? null;
   const [qrImg, setQrImg] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const paying = useRef(false);
+  const payKey = useSubmitKey();
   const [msg, setMsg] = useState<{ tone: "error" | "success"; text: string } | null>(null);
   const left = useCountdown(b?.status === "PENDING_PAYMENT" && b.price_snapshot?.payment_mode !== "AT_CLUB" ? b.hold_expires_at : null);
 
@@ -128,16 +130,21 @@ function Booking() {
   }, [left, reload]);
 
   async function pay() {
+    // Ikki marta bosish: `busy` keyingi render'gacha yangilanmaydi — ref darhol to'sadi
+    if (paying.current) return;
+    paying.current = true;
     setBusy("pay");
     setMsg(null);
     try {
-      const res = await session.post<{ payment_id: string; checkout_url: string }>("/payments", { booking_id: id, provider: provider ?? "DEMO", return_url: `${window.location.origin}/bookings/${id}?paid=1` }, { "Idempotency-Key": idemKey() });
+      const body = { booking_id: id, provider: provider ?? "DEMO", return_url: `${window.location.origin}/bookings/${id}?paid=1` };
+      const res = await session.post<{ payment_id: string; checkout_url: string }>("/payments", body, { "Idempotency-Key": payKey(body) });
       const url = res.data.checkout_url;
       if (url.startsWith("http")) window.location.href = url;
       else router.push(url);
     } catch (e) {
       setMsg({ tone: "error", text: errorText(e) });
       setBusy(null);
+      paying.current = false;
     }
   }
 

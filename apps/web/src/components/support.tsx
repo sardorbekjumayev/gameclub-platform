@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Alert, Badge, Button, Chip, Field, Input, cx } from "@/components/ui";
 import { type MessageKey, useErrorText, useI18n } from "@/i18n/provider";
 import { fmtDate, fmtTime } from "@/lib/format";
@@ -32,9 +32,13 @@ export function NewTicketForm({ onCreated }: { onCreated: (t: SupportTicketDetai
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    // Ikki marta bosish: `busy` keyingi render'gacha yangilanmaydi — ref darhol to'sadi
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -46,6 +50,7 @@ export function NewTicketForm({ onCreated }: { onCreated: (t: SupportTicketDetai
       setError(errorText(err));
     } finally {
       setBusy(false);
+      submitting.current = false;
     }
   }
 

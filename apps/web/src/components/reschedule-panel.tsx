@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Spinner, cx } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { fmtDate, fmtTime, tzDate } from "@/lib/format";
 import { session } from "@/lib/session";
 import type { BookingDetail, Slots } from "@/lib/types";
-import { idemKey, useApi } from "@/lib/use-api";
+import { useApi, useSubmitKey } from "@/lib/use-api";
 
 /**
  * Bronni ko'chirish (POST /bookings/:id/reschedule): yangi sana + boshlanish vaqti.
@@ -21,6 +21,8 @@ export function ReschedulePanel({ booking, onDone, onClose }: { booking: Booking
   const [date, setDate] = useState(dates[0]);
   const [start, setStart] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const submitKey = useSubmitKey();
   const [error, setError] = useState<string | null>(null);
   const [openedAt] = useState(() => Date.now());
   const slots = useApi<Slots>(`/branches/${booking.branch.id}/slots?date=${date}&duration=${booking.duration_minutes}&exclude_booking_id=${booking.id}`);
@@ -30,15 +32,20 @@ export function ReschedulePanel({ booking, onDone, onClose }: { booking: Booking
 
   async function submit() {
     if (!start) return;
+    // Ikki marta bosish: `busy` keyingi render'gacha yangilanmaydi — ref darhol to'sadi
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setError(null);
     try {
-      await session.post(`/bookings/${booking.id}/reschedule`, { start_at: start }, { "Idempotency-Key": idemKey() });
+      const body = { start_at: start };
+      await session.post(`/bookings/${booking.id}/reschedule`, body, { "Idempotency-Key": submitKey(body) });
       onDone();
     } catch (e) {
       setError(errorText(e));
       if ((e as { code?: string }).code === "BOOKING_SLOT_TAKEN") slots.reload();
       setBusy(false);
+      submitting.current = false;
     }
   }
 

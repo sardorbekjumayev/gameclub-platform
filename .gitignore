@@ -15,3 +15,6 @@ apps/api/storage/
 
 # Claude Code agent worktree'lari
 .claude/worktrees/
+# k6 yuklama testi ma'lumotlari (setup-data.mjs)
+loadtest/.data.json
+loadtest/results/

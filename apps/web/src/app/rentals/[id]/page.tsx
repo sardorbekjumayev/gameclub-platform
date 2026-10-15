@@ -4,14 +4,14 @@ import { formatMoney } from "@gc/types";
 import { CheckCircle2, Clock, Gamepad2, Info, MapPin, Minus, Phone, Plus, ShieldCheck, Store, Truck } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { RentalPrices, RentalThumb } from "@/components/rental-card";
 import { Alert, Badge, Button, Card, Chip, Input, Spinner, cx } from "@/components/ui";
 import { type MessageKey, useErrorText, useI18n } from "@/i18n/provider";
 import { fmtDate, fmtTime, tzDate } from "@/lib/format";
 import { session, useAuth } from "@/lib/session";
 import type { RentalItem, RentalQuote } from "@/lib/types";
-import { idemKey, useApi } from "@/lib/use-api";
+import { useApi, useSubmitKey } from "@/lib/use-api";
 
 export default function RentalItemPage() {
   const { id } = useParams<{ id: string }>();
@@ -186,6 +186,8 @@ function RentForm({ item }: { item: RentalItem }) {
   const [phone, setPhone] = useState(me?.phone ?? "");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const submitKey = useSubmitKey();
   const [error, setError] = useState<string | null>(null);
 
   const maxUnits = unit === "HOUR" ? Math.min(item.max_days * 24, 72) : item.max_days;
@@ -222,30 +224,31 @@ function RentForm({ item }: { item: RentalItem }) {
       return;
     }
     if (!start) return;
+    // Ikki marta bosish: `busy` keyingi render'gacha yangilanmaydi — ref darhol to'sadi
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setError(null);
+    const body = {
+      item_id: item.id,
+      rate_unit: unit,
+      units,
+      start_at: start,
+      quantity: qty,
+      fulfillment,
+      ...(fulfillment === "DELIVERY" ? { delivery_address: address.trim() } : {}),
+      ...(phone.trim() ? { contact_phone: normalizePhone(phone) } : {}),
+      ...(notes.trim() ? { notes: notes.trim() } : {}),
+    };
     try {
-      const res = await session.post<{ id: string }>(
-        "/rentals",
-        {
-          item_id: item.id,
-          rate_unit: unit,
-          units,
-          start_at: start,
-          quantity: qty,
-          fulfillment,
-          ...(fulfillment === "DELIVERY" ? { delivery_address: address.trim() } : {}),
-          ...(phone.trim() ? { contact_phone: normalizePhone(phone) } : {}),
-          ...(notes.trim() ? { notes: notes.trim() } : {}),
-        },
-        { "Idempotency-Key": idemKey() },
-      );
+      const res = await session.post<{ id: string }>("/rentals", body, { "Idempotency-Key": submitKey(body) });
       router.push(`/my-rentals/${res.data.id}`);
     } catch (e) {
       setError(errorText(e));
       quote.reload();
       slots.reload();
       setBusy(false);
+      submitting.current = false;
     }
   }
 
