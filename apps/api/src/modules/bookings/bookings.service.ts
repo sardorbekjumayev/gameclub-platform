@@ -10,6 +10,7 @@ import { Paginated } from '../../common/interceptors/response.interceptor';
 import { bookingCode, maskPhone, signQr } from '../../common/utils/codes';
 import { fmtMoney, fmtWhen } from '../../common/utils/format';
 import { uuidv7 } from '../../common/utils/id';
+import { FilesService } from '../files/files.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -75,6 +76,7 @@ export class BookingsService {
     private readonly rbac: RbacService,
     private readonly config: ConfigService,
     private readonly realtime: RealtimeService,
+    private readonly files: FilesService,
   ) {}
 
   // ---------- Kontekst va tekshiruvlar ----------
@@ -443,7 +445,7 @@ export class BookingsService {
     if (!b) throw new AppException('NOT_FOUND', 'Booking not found');
     const [branch, clubPay, devices, payments, session, review] = await Promise.all([
       this.prisma.branches.findUnique({ where: { id: b.branch_id }, select: { id: true, name: true, slug: true, address: true, latitude: true, longitude: true, timezone: true, phone: true, booking_settings: true, club: { select: { id: true, name: true, slug: true, logo_url: true, phone: true } } } }),
-      this.prisma.clubs.findUnique({ where: { id: b.club_id }, select: { cancellation_policy: true, transfer_card_number: true, transfer_card_holder: true } }),
+      this.prisma.clubs.findUnique({ where: { id: b.club_id }, select: { cancellation_policy: true, transfer_card_number: true, transfer_card_holder: true, transfer_link_url: true, transfer_link_label: true, transfer_receipt_required: true } }),
       this.prisma.devices.findMany({ where: { id: { in: b.items.map((i) => i.device_id) } }, select: { id: true, name: true, type: true, room: { select: { name: true } } } }),
       this.prisma.payments.findMany({ where: { booking_id: id }, orderBy: { created_at: 'asc' }, select: { id: true, amount: true, method: true, provider: true, provider_payload: true, status: true, paid_at: true, refunded_amount: true, failed_reason: true, created_at: true } }),
       this.prisma.sessions.findFirst({ where: { booking_id: id }, orderBy: { created_at: 'desc' } }),
@@ -458,8 +460,18 @@ export class BookingsService {
     // Kartaga o'tkazma: karta faqat to'lanmagan bron uchun ko'rsatiladi
     const pendingTransfer = payments.find((p) => p.method === 'CARD_TRANSFER' && p.status === 'PROCESSING') ?? null;
     const lastRejected = [...payments].reverse().find((p) => p.method === 'CARD_TRANSFER' && p.status === 'FAILED') ?? null;
-    const transfer = amountDue > 0n && clubPay?.transfer_card_number && b.customer_id && ['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'ACTIVE'].includes(b.status)
-      ? { card_number: clubPay.transfer_card_number, card_holder: clubPay.transfer_card_holder, amount: amountDue, pending: pendingTransfer, rejected: pendingTransfer ? null : lastRejected }
+    const withReceipt = <T extends { provider_payload: unknown } | null>(p: T) => {
+      const id = (p?.provider_payload as { receipt_file_id?: string | null } | null)?.receipt_file_id;
+      return p ? { ...p, receipt_url: id ? this.files.url({ id, purpose: 'RECEIPT' }) : null } : null;
+    };
+    // Karta va/yoki to'lov havolasi (Click/Payme/QR) — mijoz tanlaydi; chek klub sozlamasiga ko'ra majburiy
+    const transfer = amountDue > 0n && (clubPay?.transfer_card_number || clubPay?.transfer_link_url) && b.customer_id && ['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'ACTIVE'].includes(b.status)
+      ? {
+          card_number: clubPay.transfer_card_number, card_holder: clubPay.transfer_card_holder,
+          link: clubPay.transfer_link_url ? { url: clubPay.transfer_link_url, label: clubPay.transfer_link_label } : null,
+          receipt_required: clubPay.transfer_receipt_required,
+          amount: amountDue, pending: withReceipt(pendingTransfer), rejected: pendingTransfer ? null : lastRejected,
+        }
       : null;
     return {
       ...b,

@@ -17,6 +17,7 @@ import { Grant } from '../rbac/rbac.service';
 import { CashPaymentDto, CloseShiftDto, CompleteRefundDto, OpenShiftDto, PaymentListQuery, RefundDto, RefundListQuery, RejectTransferDto, ShiftListQuery, TransferPaymentDto } from './dto/payments.dto';
 import { FinanceService } from './finance.service';
 import { PaymentProviders } from './providers/registry';
+import { FilesService } from '../files/files.service';
 
 export interface NormalizedEvent {
   provider: string;
@@ -37,6 +38,7 @@ export class PaymentsService {
     private readonly config: ConfigService,
     private readonly realtime: RealtimeService,
     private readonly providers: PaymentProviders,
+    private readonly files: FilesService,
   ) {}
 
   /** DEMO provayder (PaymentProvider interfeysi, docs/01-API.md §6.10) — haqiqiy Payme/Click adapteri shu shaklda. */
@@ -168,20 +170,30 @@ export class PaymentsService {
     if (!b) throw new AppException('NOT_FOUND', 'Booking not found');
     if (!['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'ACTIVE'].includes(b.status)) throw new AppException('CONFLICT', `Cannot pay a ${b.status} booking`);
     if (b.status === 'PENDING_PAYMENT' && b.hold_expires_at && b.hold_expires_at <= new Date()) throw new AppException('BOOKING_HOLD_EXPIRED', 'Hold expired');
-    const club = await this.prisma.clubs.findUniqueOrThrow({ where: { id: b.club_id }, select: { transfer_card_number: true, name: true } });
-    if (!club.transfer_card_number) throw new AppException('PAYMENT_FAILED', 'Card transfer is not available for this club');
+    const club = await this.prisma.clubs.findUniqueOrThrow({ where: { id: b.club_id }, select: { transfer_card_number: true, transfer_link_url: true, transfer_link_label: true, transfer_receipt_required: true, name: true } });
+    const channel = dto.channel ?? (club.transfer_card_number ? 'CARD' : 'LINK');
+    if (channel === 'CARD' ? !club.transfer_card_number : !club.transfer_link_url) throw new AppException('PAYMENT_FAILED', 'This transfer method is not available for this club', { reason: 'TRANSFER_CHANNEL_DISABLED', channel });
+    if (channel === 'CARD' && !dto.payer_card_last4) throw new AppException('VALIDATION_ERROR', 'payer_card_last4 is required', { field: 'payer_card_last4' });
+    if (club.transfer_receipt_required && !dto.receipt_file_id) throw new AppException('VALIDATION_ERROR', 'Receipt is required', { field: 'receipt_file_id', reason: 'RECEIPT_REQUIRED' });
     const due = b.total_amount - b.paid_amount;
     if (due <= 0n) throw new AppException('PAYMENT_ALREADY_PAID', 'Booking is already paid');
     const payerName = dto.payer_name?.trim() || null;
+    const last4 = dto.payer_card_last4 ?? null;
     const { payment, confirmed } = await this.prisma.$transaction(async (tx) => {
       const open = await tx.payments.findFirst({ where: { booking_id: b.id, method: 'CARD_TRANSFER', status: 'PROCESSING' } });
       if (open) throw new AppException('CONFLICT', 'Transfer is already awaiting confirmation', { reason: 'TRANSFER_PENDING', payment_id: open.id });
       const p = await tx.payments.create({
         data: {
           id: uuidv7(), booking_id: b.id, user_id: userId, club_id: b.club_id, branch_id: b.branch_id, amount: due, method: 'CARD_TRANSFER', provider: 'CARD_TRANSFER', status: 'PROCESSING',
-          provider_payload: { payer_name: payerName, payer_card_last4: dto.payer_card_last4, card_last4: club.transfer_card_number!.slice(-4) },
+          provider_payload: {
+            channel, payer_name: payerName, payer_card_last4: last4,
+            ...(channel === 'CARD' ? { card_last4: club.transfer_card_number!.slice(-4) } : { link_label: club.transfer_link_label }),
+            receipt_file_id: dto.receipt_file_id ?? null,
+          },
         },
       });
+      // Chek faqat bir marta va faqat o'z egasining to'loviga biriktiriladi
+      if (dto.receipt_file_id) await this.files.claimReceipt(tx, dto.receipt_file_id, userId, { type: 'payment', id: p.id, club_id: b.club_id });
       await tx.booking_events.create({ data: { id: uuidv7(), booking_id: b.id, type: 'TRANSFER_SUBMITTED', actor_id: userId, data: { payment_id: p.id, amount: Number(due) } } });
       // Hold tugashidan oldin (sweeper bilan poyga bo'lmasligi uchun shartli yangilash) bron tasdiqlanadi
       const r = await tx.bookings.updateMany({ where: { id: b.id, status: 'PENDING_PAYMENT', hold_expires_at: { gt: new Date() } }, data: { status: 'CONFIRMED', hold_expires_at: null } });
@@ -194,7 +206,8 @@ export class PaymentsService {
       await this.notifications.notify([userId], 'BOOKING_CONFIRMED', { code: b.code, club: club.name, when: fmtWhen(b.start_at, branch?.timezone) }, { booking_id: b.id });
       this.realtime.branch(b.branch_id, 'booking.updated', { booking_id: b.id });
     }
-    await this.notifications.notifyClubStaff(b.club_id, b.branch_id, 'TRANSFER_PENDING', { code: b.code, payer: payerName ?? '—', last4: dto.payer_card_last4, amount: fmtMoney(due) }, { booking_id: b.id, payment_id: payment.id });
+    const via = channel === 'CARD' ? `…${last4}` : (club.transfer_link_label ?? 'link');
+    await this.notifications.notifyClubStaff(b.club_id, b.branch_id, 'TRANSFER_PENDING', { code: b.code, payer: payerName ?? '—', last4: via, amount: fmtMoney(due), receipt: dto.receipt_file_id ? ' 📎' : '' }, { booking_id: b.id, payment_id: payment.id });
     this.realtime.branch(b.branch_id, 'payment.transfer_pending', { booking_id: b.id, payment_id: payment.id });
     return { ...payment, booking_status: confirmed ? 'CONFIRMED' : b.status };
   }
@@ -360,7 +373,11 @@ export class PaymentsService {
     const code = new Map([...bookings, ...rentals].map((b) => [b.id, b.code]));
     const club = new Map(clubs.map((c) => [c.id, c.name]));
     return new Paginated(
-      rows.map((r) => ({ ...r, booking_code: (r.booking_id ?? r.rental_id) ? code.get((r.booking_id ?? r.rental_id)!) ?? null : null, club_name: club.get(r.club_id) ?? null })),
+      rows.map((r) => {
+        // Ro'yxat allaqachon ruxsat bo'yicha cheklangan — chekni ko'rish uchun vaqtinchalik havola
+        const receiptId = (r.provider_payload as { receipt_file_id?: string | null } | null)?.receipt_file_id;
+        return { ...r, booking_code: (r.booking_id ?? r.rental_id) ? code.get((r.booking_id ?? r.rental_id)!) ?? null : null, club_name: club.get(r.club_id) ?? null, receipt_url: receiptId ? this.files.url({ id: receiptId, purpose: 'RECEIPT' }) : null };
+      }),
       {
         page: q.page, limit: q.limit, total,
         summary: { collected: Number(sums._sum.amount ?? 0n), refunded: Number(sums._sum.refunded_amount ?? 0n), commission: Number(sums._sum.commission_amount ?? 0n) },

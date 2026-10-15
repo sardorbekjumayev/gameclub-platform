@@ -143,9 +143,11 @@ export default function AdminClubPage() {
                 <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm">
                   <div>
                     <div className="font-bold">{t(`doc.${d.type}` as never)}</div>
-                    <a href={d.file_url} target="_blank" rel="noreferrer" className="break-all text-xs text-accent underline">
-                      {d.file_url}
-                    </a>
+                    {d.file_url && (
+                      <a href={d.file_url} target="_blank" rel="noreferrer" className="break-all text-xs text-accent underline">
+                        {d.file_id ? t("upload.open") : d.file_url}
+                      </a>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={d.status} />

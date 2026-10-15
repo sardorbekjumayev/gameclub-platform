@@ -187,36 +187,39 @@ model idempotency_keys {
 // ---------- 3.2 Club, filial, xona ----------
 
 model clubs {
-  id                   String    @id @db.Uuid
-  owner_id             String    @db.Uuid
-  name                 String
-  slug                 String    @unique
-  logo_url             String? // files moduli (S3) kelguncha to'g'ridan-to'g'ri URL
-  cover_url            String?
-  description          String?
-  phone                String?
-  telegram             String?
-  instagram            String?
-  website              String?
-  rules                String?
-  amenities            String[]  @default([])
-  min_booking_minutes  Int       @default(60)
-  cancellation_policy  Json?
+  id                        String    @id @db.Uuid
+  owner_id                  String    @db.Uuid
+  name                      String
+  slug                      String    @unique
+  logo_url                  String? // files moduli (S3) kelguncha to'g'ridan-to'g'ri URL
+  cover_url                 String?
+  description               String?
+  phone                     String?
+  telegram                  String?
+  instagram                 String?
+  website                   String?
+  rules                     String?
+  amenities                 String[]  @default([])
+  min_booking_minutes       Int       @default(60)
+  cancellation_policy       Json?
   /// Mijoz to'lovni shu kartaga o'tkazadi (CARD_TRANSFER); faqat to'lanmagan bron egasiga ko'rsatiladi
-  transfer_card_number String?
-  transfer_card_holder String?
-  status               String    @default("DRAFT")
-  rejection_reason     String?
-  approved_by          String?   @db.Uuid
-  approved_at          DateTime? @db.Timestamptz
-  suspended_reason     String?
-  rating_avg           Decimal   @default(0) @db.Decimal(3, 2)
-  rating_count         Int       @default(0)
-  commission_bps       Int?
-  settings             Json?
-  created_at           DateTime  @default(now()) @db.Timestamptz
-  updated_at           DateTime  @updatedAt @db.Timestamptz
-  deleted_at           DateTime? @db.Timestamptz
+  transfer_card_number      String?
+  transfer_card_holder      String?
+  transfer_link_url         String?
+  transfer_link_label       String?
+  transfer_receipt_required Boolean   @default(false)
+  status                    String    @default("DRAFT")
+  rejection_reason          String?
+  approved_by               String?   @db.Uuid
+  approved_at               DateTime? @db.Timestamptz
+  suspended_reason          String?
+  rating_avg                Decimal   @default(0) @db.Decimal(3, 2)
+  rating_count              Int       @default(0)
+  commission_bps            Int?
+  settings                  Json?
+  created_at                DateTime  @default(now()) @db.Timestamptz
+  updated_at                DateTime  @updatedAt @db.Timestamptz
+  deleted_at                DateTime? @db.Timestamptz
 
   branches      branches[]
   subscriptions subscriptions[]
@@ -227,7 +230,9 @@ model club_documents {
   id          String   @id @db.Uuid
   club_id     String   @db.Uuid
   type        String // LICENSE | TAX_ID | PASSPORT | OTHER
-  file_url    String
+  /// Tashqi havola (eski usul) yoki `file_id` — o'z storage'imizdagi fayl (CLUB_DOCUMENT)
+  file_url    String?
+  file_id     String?  @db.Uuid
   status      String   @default("PENDING")
   reviewed_by String?  @db.Uuid
   note        String?
@@ -410,24 +415,24 @@ model device_maintenance {
 // ---------- 3.4 Tariflar ----------
 
 model tariffs {
-  id             String         @id @db.Uuid
-  club_id        String         @db.Uuid
-  branch_id      String         @db.Uuid
+  id             String            @id @db.Uuid
+  club_id        String            @db.Uuid
+  branch_id      String            @db.Uuid
   name           String
   device_type    String?
-  category_id    String?        @db.Uuid
-  room_id        String?        @db.Uuid
-  device_id      String?        @db.Uuid
+  category_id    String?           @db.Uuid
+  room_id        String?           @db.Uuid
+  device_id      String?           @db.Uuid
   price_per_hour BigInt
   min_minutes    Int?
   max_minutes    Int?
-  priority       Int            @default(0)
-  is_active      Boolean        @default(true)
-  valid_from     DateTime?      @db.Date
-  valid_to       DateTime?      @db.Date
-  created_at     DateTime       @default(now()) @db.Timestamptz
-  updated_at     DateTime       @updatedAt @db.Timestamptz
-  deleted_at     DateTime?      @db.Timestamptz
+  priority       Int               @default(0)
+  is_active      Boolean           @default(true)
+  valid_from     DateTime?         @db.Date
+  valid_to       DateTime?         @db.Date
+  created_at     DateTime          @default(now()) @db.Timestamptz
+  updated_at     DateTime          @updatedAt @db.Timestamptz
+  deleted_at     DateTime?         @db.Timestamptz
   rules          tariff_rules[]
   packages       tariff_packages[]
 
@@ -984,4 +989,25 @@ model daily_branch_stats {
 
   @@id([branch_id, date])
   @@index([club_id, date])
+}
+
+/// O'z fayl saqlash joyimiz: fayl diskda (`STORAGE_DIR/<storage_key>`), metama'lumot shu yerda.
+/// purpose: RECEIPT (o'tkazma cheki — maxfiy), CLUB_MEDIA (logo/muqova — ommaviy), CLUB_DOCUMENT (maxfiy).
+model files {
+  id            String    @id @db.Uuid
+  owner_id      String    @db.Uuid
+  club_id       String?   @db.Uuid
+  purpose       String
+  mime          String
+  size          Int
+  sha256        String
+  storage_key   String    @unique
+  original_name String?
+  ref_type      String?
+  ref_id        String?   @db.Uuid
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  deleted_at    DateTime? @db.Timestamptz
+
+  @@index([owner_id, purpose])
+  @@index([ref_type, ref_id])
 }

@@ -317,7 +317,8 @@ export class TelegramBotService implements OnModuleInit, OnApplicationBootstrap 
     if (d.transfer) {
       if (d.transfer.pending) lines.push('', bt(acc.lang, 'ticket.transfer_pending'));
       else {
-        lines.push('', bt(acc.lang, 'ticket.transfer', { card: esc(d.transfer.card_number.replace(/(\d{4})(?=\d)/g, '$1 ')), holder: esc(d.transfer.card_holder), amount: fmtMoney(d.transfer.amount) }));
+        if (d.transfer.card_number) lines.push('', bt(acc.lang, 'ticket.transfer', { card: esc(d.transfer.card_number.replace(/(\d{4})(?=\d)/g, '$1 ')), holder: esc(d.transfer.card_holder ?? ''), amount: fmtMoney(d.transfer.amount) }));
+        else if (d.transfer.link) lines.push('', bt(acc.lang, 'ticket.transfer_link', { amount: fmtMoney(d.transfer.amount) }));
         if (d.transfer.rejected) lines.push(bt(acc.lang, 'ticket.transfer_rejected', { reason: esc(d.transfer.rejected.failed_reason || '—') }));
       }
     }
@@ -333,6 +334,8 @@ export class TelegramBotService implements OnModuleInit, OnApplicationBootstrap 
     const web = this.webUrl(`/bookings/${d.id}`);
     if (web) row2.push({ text: bt(acc.lang, 'ticket.open_web'), url: web });
     if (row2.length) kb.push(row2);
+    // Klubning to'lov havolasi (Click/Payme/QR) — to'langach chek saytda/ilovada yuboriladi
+    if (d.transfer && !d.transfer.pending && d.transfer.link) kb.push([{ text: bt(acc.lang, 'ticket.pay_link', { label: d.transfer.link.label ?? '💳' }), url: d.transfer.link.url }]);
     kb.push([
       { text: bt(acc.lang, 'back'), callback_data: back === 'u' ? 'tl' : `h:${back}` },
       { text: bt(acc.lang, 'refresh'), callback_data: `t:${d.id}:${back}` },

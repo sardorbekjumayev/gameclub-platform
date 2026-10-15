@@ -16,6 +16,9 @@ export const envSchema = z.object({
     .default('')
     .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
   APP_TIMEZONE_DEFAULT: z.string().default('Asia/Tashkent'),
+  // Fayllar (cheklar, logo, hujjatlar) — o'z diskimizda; prod'da doimiy volume (backup'ga kiradi)
+  STORAGE_DIR: z.string().default('./storage'),
+  UPLOAD_MAX_MB: z.coerce.number().int().min(1).max(50).default(10),
   ADMIN_APP_URL: z.string().url().default('http://localhost:4720'),
   // Mijoz sayti (Telegram botdagi "Saytda ochish" tugmasi; faqat https bo'lsa ko'rsatiladi)
   PUBLIC_WEB_URL: optional(z.string().url()),

@@ -140,15 +140,15 @@ export class BranchesService {
     const b = await this.prisma.branches.findFirst({
       where: { ...(isId ? { id: idOrSlug } : { slug: idOrSlug }), deleted_at: null, status: 'ACTIVE', club: { status: 'ACTIVE', deleted_at: null } },
       include: {
-        club: { select: { ...PUBLIC_CLUB_SELECT, cancellation_policy: true, settings: true, transfer_card_number: true } },
+        club: { select: { ...PUBLIC_CLUB_SELECT, cancellation_policy: true, settings: true, transfer_card_number: true, transfer_link_url: true } },
         rooms: { where: { deleted_at: null, status: 'ACTIVE' }, orderBy: { position: 'asc' }, select: { id: true, name: true, type: true, capacity: true, description: true } },
         exceptions: { where: { date: { gte: new Date(Date.now() - 86400_000) } }, orderBy: { date: 'asc' } },
       },
     });
     if (!b) throw new AppException('NOT_FOUND', 'Branch not found');
     // Karta raqami ommaviy sahifada ko'rinmaydi — faqat "kartaga o'tkazma mumkin" belgisi
-    const { transfer_card_number, settings, cancellation_policy, ...club } = b.club;
-    const payment_options = { card_transfer: !!transfer_card_number, pay_at_club: (settings as { allow_pay_at_club?: boolean } | null)?.allow_pay_at_club !== false };
+    const { transfer_card_number, transfer_link_url, settings, cancellation_policy, ...club } = b.club;
+    const payment_options = { card_transfer: !!transfer_card_number || !!transfer_link_url, pay_at_club: (settings as { allow_pay_at_club?: boolean } | null)?.allow_pay_at_club !== false };
     const [devices, categories, minTariff] = await Promise.all([
       this.prisma.devices.groupBy({ by: ['type'], where: { branch_id: b.id, deleted_at: null, operational_status: 'ACTIVE' }, _count: true }),
       this.prisma.device_categories.findMany({ where: { club_id: b.club_id, deleted_at: null, OR: [{ branch_id: null }, { branch_id: b.id }] }, orderBy: { position: 'asc' } }),

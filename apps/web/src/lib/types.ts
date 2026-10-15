@@ -133,7 +133,9 @@ export type BookingPayment = {
   amount: number;
   method: "ONLINE_CARD" | "WALLET" | "CASH" | "TERMINAL" | "CARD_TRANSFER" | string;
   provider: string | null;
-  provider_payload: { payer_name?: string; payer_card_last4?: string; card_last4?: string } | null;
+  provider_payload: { channel?: "CARD" | "LINK"; payer_name?: string; payer_card_last4?: string | null; card_last4?: string; link_label?: string | null; receipt_file_id?: string | null } | null;
+  /** Biriktirilgan chek — vaqtinchalik imzolangan havola. */
+  receipt_url?: string | null;
   status: string;
   paid_at: string | null;
   refunded_amount: number;
@@ -153,7 +155,16 @@ export type BookingDetail = Omit<BookingListItem, "devices"> & {
   /** Hozir bekor qilinsa qaytariladigan foiz va summa (paid_amount bo'yicha) */
   refund_preview?: { percent: number; amount: number } | null;
   /** Klub kartasiga o'tkazma (faqat to'lanmagan qism bo'lsa) */
-  transfer?: { card_number: string; card_holder: string | null; amount: number; pending: BookingPayment | null; rejected: BookingPayment | null } | null;
+  /** Kartaga o'tkazma va/yoki klubning to'lov havolasi (Click/Payme/QR); operator tasdiqlaydi. */
+  transfer?: {
+    card_number: string | null;
+    card_holder: string | null;
+    link: { url: string; label: string | null } | null;
+    receipt_required: boolean;
+    amount: number;
+    pending: BookingPayment | null;
+    rejected: BookingPayment | null;
+  } | null;
   payments?: BookingPayment[];
   can_cancel: boolean;
   can_review: boolean;

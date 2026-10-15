@@ -8,6 +8,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { FinanceService } from './finance.service';
 import { PaymentsService } from './payments.service';
 import { PaymentProviders } from './providers/registry';
+import { FilesService } from '../files/files.service';
 
 /** DEMO webhook: `X-Signature = hex(HMAC-SHA256(QR_HMAC_SECRET, "demo:" + body))`, imzo body'ga bog'langan. */
 describe('PaymentsService demo webhook signature', () => {
@@ -17,7 +18,7 @@ describe('PaymentsService demo webhook signature', () => {
   function setup() {
     const config = { getOrThrow: (k: string) => (k === 'QR_HMAC_SECRET' ? SECRET : undefined) } as unknown as ConfigService;
     const svc = new PaymentsService(
-      {} as PrismaService, {} as FinanceService, {} as AuditService, {} as NotificationsService, config, {} as RealtimeService, {} as PaymentProviders,
+      {} as PrismaService, {} as FinanceService, {} as AuditService, {} as NotificationsService, config, {} as RealtimeService, {} as PaymentProviders, {} as FilesService,
     );
     const handle = jest.spyOn(svc, 'handleEvent').mockResolvedValue({ processed: true, status: 'PAID', booking_status: 'CONFIRMED' });
     return { svc, handle };

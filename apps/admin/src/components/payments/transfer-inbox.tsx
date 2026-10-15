@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDateTime, formatMoney } from "@gc/types";
-import { ArrowDownLeft, ArrowUpRight, Phone } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Paperclip, Phone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Empty, LoadState } from "@/components/status";
 import { Alert, Badge, Button, Card, Input } from "@/components/ui";
@@ -78,11 +78,21 @@ export function TransferInbox({ clubId, branchId, refreshKey = 0, compact }: { c
                   <div className="font-mono text-sm font-bold">{p.booking_code ?? "—"}</div>
                   <div className="text-sm">
                     {p.provider_payload?.payer_name ? `${p.provider_payload.payer_name} · ` : ""}
-                    {t("transfer.inbox.from", { last4: p.provider_payload?.payer_card_last4 ?? "····" })}
+                    {p.provider_payload?.channel === "LINK"
+                      ? t("transfer.inbox.viaLink", { label: p.provider_payload.link_label ?? t("transfer.inbox.link") })
+                      : t("transfer.inbox.from", { last4: p.provider_payload?.payer_card_last4 ?? "····" })}
                   </div>
                   <div className="text-xs text-muted">
-                    {t("transfer.inbox.to", { last4: p.provider_payload?.card_last4 ?? "····" })} · {formatDateTime(p.created_at, undefined, locale)}
+                    {p.provider_payload?.channel !== "LINK" && <>{t("transfer.inbox.to", { last4: p.provider_payload?.card_last4 ?? "····" })} · </>}
+                    {formatDateTime(p.created_at, undefined, locale)}
                   </div>
+                  {p.receipt_url ? (
+                    <a href={p.receipt_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1.5 text-sm font-bold text-accent hover:underline">
+                      <Paperclip className="h-4 w-4" /> {t("transfer.inbox.receipt")}
+                    </a>
+                  ) : (
+                    <div className="mt-1 text-xs text-muted">{t("transfer.inbox.noReceipt")}</div>
+                  )}
                 </div>
                 <div className="font-display text-2xl font-bold">{money(p.amount)}</div>
               </div>

@@ -13,7 +13,7 @@ export type MyClub = {
   my_roles: { role: string; branch_id: string | null }[];
 };
 
-export type ClubDocument = { id: string; type: string; file_url: string; status: string; note?: string | null; created_at: string };
+export type ClubDocument = { id: string; type: string; file_url: string | null; file_id?: string | null; status: string; note?: string | null; created_at: string };
 
 export type Club = {
   id: string;
@@ -224,9 +224,11 @@ export type ClubPaymentSettings = {
   cancellation_policy: CancellationPolicy;
   settings: { allow_pay_at_club?: boolean } & Record<string, unknown>;
   transfer_card: { number: string; holder: string | null } | null;
+  transfer_link: { url: string; label: string | null } | null;
+  transfer_receipt_required: boolean;
 };
 
-export type TransferPayload = { payer_name?: string; payer_card_last4?: string; card_last4?: string };
+export type TransferPayload = { channel?: "CARD" | "LINK"; payer_name?: string; payer_card_last4?: string | null; card_last4?: string; link_label?: string | null; receipt_file_id?: string | null };
 
 export type PaymentRow = {
   id: string;
@@ -241,6 +243,8 @@ export type PaymentRow = {
   status: string;
   failed_reason: string | null;
   created_at: string;
+  /** Mijoz biriktirgan chek — vaqtinchalik imzolangan havola (faqat o'tkazmalarda). */
+  receipt_url?: string | null;
 };
 
 export type RefundRow = {

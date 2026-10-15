@@ -8,6 +8,7 @@ import { Empty, LoadState, StatusBadge } from "@/components/status";
 import { Alert, Button, Card, Field, Input, Select } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session, useAuth } from "@/lib/session";
+import { FileUploadButton } from "@/components/file-upload";
 import { SubscriptionCard } from "@/components/subscription-card";
 import type { Club, ClubDocument, ClubSubscription } from "@/lib/types";
 import { normalizePhone, useApi } from "@/lib/use-api";
@@ -91,6 +92,34 @@ export default function ClubProfilePage() {
 
           {sub.data && <SubscriptionCard data={sub.data} />}
 
+          {/* Logo va muqova — o'z storage'imizga yuklanadi va darhol saqlanadi */}
+          <Card className="space-y-4">
+            <div className="font-display text-lg font-bold">{t("club.media")}</div>
+            <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
+              {(["logo_url", "cover_url"] as const).map((k) => (
+                <div key={k} className="space-y-2">
+                  <div className="text-[13px] font-semibold text-muted">{t(k === "logo_url" ? "club.logo" : "club.cover")}</div>
+                  <div className={k === "logo_url" ? "h-24 w-24 overflow-hidden rounded-2xl bg-surface-2" : "h-24 w-full max-w-md overflow-hidden rounded-2xl bg-surface-2"}>
+                    {c[k] && (
+                      // eslint-disable-next-line @next/next/no-img-element -- tashqi/storage rasmi, Next optimizatsiyasiz
+                      <img src={c[k]!} alt="" className="h-full w-full object-cover" />
+                    )}
+                  </div>
+                  {editable && (
+                    <FileUploadButton
+                      purpose="CLUB_MEDIA"
+                      clubId={clubId}
+                      accept="image/jpeg,image/png,image/webp"
+                      label={t("upload.choose")}
+                      onError={(text) => setMsg({ tone: "error", text })}
+                      onUploaded={(f) => act(k, async () => club.setData((await session.patch<Club>(`/clubs/${clubId}`, { [k]: f.public_url })).data), t("common.saved"))}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+
           <Card>
             <form onSubmit={save} className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
@@ -134,9 +163,11 @@ export default function ClubProfilePage() {
                   <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm">
                     <div>
                       <div className="font-bold">{t(`doc.${d.type}` as never)}</div>
-                      <a href={d.file_url} target="_blank" rel="noreferrer" className="break-all text-xs text-accent underline">
-                        {d.file_url}
-                      </a>
+                      {d.file_url && (
+                        <a href={d.file_url} target="_blank" rel="noreferrer" className="break-all text-xs text-accent underline">
+                          {d.file_id ? t("upload.open") : d.file_url}
+                        </a>
+                      )}
                       {d.note && <div className="text-xs text-muted">{d.note}</div>}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted">
@@ -172,6 +203,23 @@ export default function ClubProfilePage() {
                 <Button type="submit" variant="secondary" loading={busy === "doc"}>
                   {t("common.add")}
                 </Button>
+                <FileUploadButton
+                  purpose="CLUB_DOCUMENT"
+                  clubId={clubId}
+                  accept="image/jpeg,image/png,application/pdf"
+                  label={t("upload.document")}
+                  onError={(text) => setMsg({ tone: "error", text })}
+                  onUploaded={(f) =>
+                    act(
+                      "doc",
+                      async () => {
+                        await session.post(`/clubs/${clubId}/documents`, { type: doc.type, file_id: f.id });
+                        docs.reload();
+                      },
+                      t("common.saved"),
+                    )
+                  }
+                />
               </form>
               <p className="text-xs text-muted">{t("club.documentUrlHint")}</p>
             </Card>

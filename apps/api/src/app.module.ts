@@ -25,6 +25,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { PlansModule } from './modules/plans/plans.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
+import { FilesModule } from './modules/files/files.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { TelegramBotModule } from './modules/telegram/bot/telegram-bot.module';
 import { CoreServicesModule } from './modules/notifications/notifications.module';
@@ -62,6 +63,7 @@ import { CoreServicesModule } from './modules/notifications/notifications.module
     CoreServicesModule,
     PlansModule,
     PayoutsModule,
+    FilesModule,
     // DiscoveryModule ClubsModule'dan oldin: statik `/branches/map` dinamik `/branches/:idOrSlug` ga tushib qolmasin.
     DiscoveryModule,
     ClubsModule,

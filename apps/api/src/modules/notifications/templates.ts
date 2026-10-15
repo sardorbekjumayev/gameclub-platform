@@ -39,9 +39,9 @@ export const TEMPLATES: Record<string, T> = {
     en: ['Payment failed', 'Payment for {code} failed. Please try again.'],
   },
   TRANSFER_PENDING: {
-    uz: ['Kartaga o\'tkazmani tekshiring', '{code}: {payer} (karta …{last4}) {amount} o\'tkazganini bildirdi. Tasdiqlang yoki rad eting.'],
-    ru: ['Проверьте перевод на карту', '{code}: {payer} (карта …{last4}) сообщил о переводе {amount}. Подтвердите или отклоните.'],
-    en: ['Check the card transfer', '{code}: {payer} (card …{last4}) reports a transfer of {amount}. Confirm or reject it.'],
+    uz: ['Kartaga o\'tkazmani tekshiring', '{code}: {payer} ({last4}) {amount} o\'tkazganini bildirdi{receipt}. Tasdiqlang yoki rad eting.'],
+    ru: ['Проверьте перевод на карту', '{code}: {payer} ({last4}) сообщил о переводе {amount}{receipt}. Подтвердите или отклоните.'],
+    en: ['Check the card transfer', '{code}: {payer} ({last4}) reports a transfer of {amount}{receipt}. Confirm or reject it.'],
   },
   TRANSFER_CONFIRMED: {
     uz: ['To\'lovingiz tasdiqlandi', '{code}: {amount} o\'tkazmangiz operator tomonidan tasdiqlandi. Rahmat!'],
