@@ -29,6 +29,8 @@ export const LIVE_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'ACT
 const EXCLUSION = /booking_items_no_overlap|23P01|conflicting key value violates exclusion constraint/;
 /** Kesishuvchi oraliqlarni parallel yozishda exclusion constraint deadlock berishi mumkin — bu ham konflikt. */
 const DEADLOCK = /40P01|deadlock detected/;
+/** Raqib tranzaksiya qurilma qatorini ushlab turibdi va `lock_timeout` o'tdi — amalda "band". */
+const LOCK_TIMEOUT = /55P03|lock timeout/;
 
 /** Shu Idempotency-Key bilan bron allaqachon yaratilgan — tranzaksiya bekor qilinib, mavjud bron qaytariladi. */
 class IdempotentReplay extends Error {
@@ -333,6 +335,8 @@ export class BookingsService {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const booking = await this.prisma.$transaction(async (tx) => {
+          // Bir qurilmaga yuzlab parallel so'rov: yutqazganlar exclusion constraint qulfini cheksiz kutib, ulanishni band qilmasin
+          await tx.$executeRaw`SET LOCAL lock_timeout = '2s'`;
           if (customerId) {
             // Bir mijozning parallel so'rovlari navbat bilan — aks holda hammasi holdlar limitidan o'tib ketadi.
             // Bir vaqtga bir nechta bron (do'stlari uchun boshqa PC) mumkin — bitta qurilmani esa exclusion constraint himoya qiladi.
@@ -423,8 +427,8 @@ export class BookingsService {
           if (dto.items.some((i) => !i.device_id) && attempt < 2) continue;
           throw new AppException('BOOKING_SLOT_TAKEN', 'This time slot was just taken');
         }
-        // Deadlock qurboni: raqib tranzaksiya yakunlangach qayta tekshiramiz (band bo'lsa — BOOKING_SLOT_TAKEN)
-        if (DEADLOCK.test(String((e as Error).message))) {
+        // Deadlock / qulf kutish vaqti tugadi: raqib tranzaksiya yakunlangach qayta tekshiramiz (band bo'lsa — BOOKING_SLOT_TAKEN)
+        if (DEADLOCK.test(String((e as Error).message)) || LOCK_TIMEOUT.test(String((e as Error).message))) {
           if (attempt < 2) continue;
           throw new AppException('BOOKING_SLOT_TAKEN', 'This time slot was just taken');
         }

@@ -68,6 +68,20 @@ describe('Bookings concurrency (e2e)', () => {
     expect(winner).toMatchObject({ status: 'PENDING_PAYMENT', start_at: start });
   });
 
+  it('heavy burst (60 parallel on one device): never 500 — exactly one 201, the rest 409 quickly', async () => {
+    const N = Number(process.env.BURST_N ?? 60);
+    const tokens = await customers(N);
+    const start = at(10, 12);
+    const t0 = Date.now();
+    const res = await Promise.all(tokens.map((t) => book(t, { branch_id: C.branchId, start_at: start, duration_minutes: 60, items: [{ device_id: C.devices[0] }], payment_mode: 'AT_CLUB' })));
+    const statuses = res.map((r) => r.status);
+    expect(statuses.filter((s) => s >= 500)).toEqual([]);
+    expect(statuses.filter((s) => s === 201)).toHaveLength(1);
+    for (const r of res.filter((x) => x.status !== 201)) expect([409, 429]).toContain(r.status);
+    expect(await activeItems(C.devices[0], start, at(10, 13))).toBe(1);
+    expect(Date.now() - t0).toBeLessThan(30_000);
+  });
+
   it('parallel partially-overlapping ranges on one device never produce overlapping bookings', async () => {
     const tokens = await customers(9);
     // 30 daqiqaga siljigan 90 daqiqalik oraliqlar — har biri qo'shnilari bilan kesishadi
