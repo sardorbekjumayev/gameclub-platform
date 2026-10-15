@@ -3,6 +3,20 @@ import { z } from 'zod';
 /** `.env` dagi bo'sh qiymat (`KEY=`) — berilmagan deb hisoblanadi. */
 const optional = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
 
+/** Rate limit qoidasi `<limit>/<oyna_soniya>` (masalan `300/60`); bo'sh — standart qiymat. */
+const rateLimit = (fallback: string) =>
+  z.preprocess(
+    (v) => (v === '' || v === undefined ? fallback : v),
+    z
+      .string()
+      .regex(/^[1-9]\d*\/[1-9]\d*$/)
+      .transform((v) => {
+        const [limit, window_s] = v.split('/').map(Number);
+        return { limit, window_s };
+      }),
+  );
+export type RateLimitRule = { limit: number; window_s: number };
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().default(4700),
@@ -16,6 +30,9 @@ export const envSchema = z.object({
     .default('')
     .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
   APP_TIMEZONE_DEFAULT: z.string().default('Asia/Tashkent'),
+  // Fayllar (cheklar, logo, hujjatlar) — o'z diskimizda; prod'da doimiy volume (backup'ga kiradi)
+  STORAGE_DIR: z.string().default('./storage'),
+  UPLOAD_MAX_MB: z.coerce.number().int().min(1).max(50).default(10),
   ADMIN_APP_URL: z.string().url().default('http://localhost:4720'),
   // Mijoz sayti (Telegram botdagi "Saytda ochish" tugmasi; faqat https bo'lsa ko'rsatiladi)
   PUBLIC_WEB_URL: optional(z.string().url()),
@@ -36,6 +53,12 @@ export const envSchema = z.object({
   CLICK_MERCHANT_USER_ID: optional(z.string()),
   // Push (FCM HTTP v1) — service account JSON (bir qatorda yoki base64)
   FCM_SERVICE_ACCOUNT: optional(z.string()),
+  // Rate limit (docs/01-API.md §Rate limit): kalit — user id yoki IP, Redis'da (barcha instansiyalar uchun umumiy)
+  RATE_LIMIT_GLOBAL: rateLimit('300/60'),
+  RATE_LIMIT_PUBLIC: rateLimit('120/60'),
+  RATE_LIMIT_WRITE: rateLimit('30/60'),
+  RATE_LIMIT_SENSITIVE: rateLimit('20/300'),
+  RATE_LIMIT_PROMO: rateLimit('10/600'),
   SUPER_ADMIN_EMAIL: z.string().email().optional(),
   SUPER_ADMIN_PASSWORD: z.string().min(8).optional(),
 });

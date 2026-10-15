@@ -5,7 +5,9 @@ import type { Response } from 'express';
 import Redis from 'ioredis';
 import { PrismaService } from '../../database/prisma.service';
 import { REDIS } from '../../infra/redis/redis.module';
+import { NoRateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
+@NoRateLimit()
 @Public()
 @ApiTags('health')
 @Controller('health')

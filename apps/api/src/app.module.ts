@@ -8,6 +8,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { validateEnv } from './config/env';
 import { DatabaseModule } from './database/database.module';
 import { RedisModule } from './infra/redis/redis.module';
+import { RateLimitModule } from './common/rate-limit/rate-limit.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
@@ -25,9 +26,11 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { PlansModule } from './modules/plans/plans.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
+import { FilesModule } from './modules/files/files.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { TelegramBotModule } from './modules/telegram/bot/telegram-bot.module';
 import { CoreServicesModule } from './modules/notifications/notifications.module';
+import { LegalModule } from './modules/legal/legal.module';
 
 @Module({
   imports: [
@@ -53,6 +56,7 @@ import { CoreServicesModule } from './modules/notifications/notifications.module
     }),
     DatabaseModule,
     RedisModule,
+    RateLimitModule,
     AuditModule,
     TelegramModule,
     RbacModule,
@@ -62,6 +66,7 @@ import { CoreServicesModule } from './modules/notifications/notifications.module
     CoreServicesModule,
     PlansModule,
     PayoutsModule,
+    FilesModule,
     // DiscoveryModule ClubsModule'dan oldin: statik `/branches/map` dinamik `/branches/:idOrSlug` ga tushib qolmasin.
     DiscoveryModule,
     ClubsModule,
@@ -73,6 +78,7 @@ import { CoreServicesModule } from './modules/notifications/notifications.module
     EngagementModule,
     AnalyticsModule,
     TelegramBotModule,
+    LegalModule,
     HealthModule,
   ],
   providers: [

@@ -12,6 +12,7 @@ import {
 } from './engagement.dto';
 import { EngagementService } from './engagement.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
 const uuid = new ParseUUIDPipe();
 
@@ -26,7 +27,7 @@ export class EngagementController {
   ) {}
 
   // ---- Sharhlar ----
-  @Post('reviews') @ApiOperation({ summary: 'Sharh (faqat COMPLETED bron, bittadan)' })
+  @RateLimit('write') @Post('reviews') @ApiOperation({ summary: 'Sharh (faqat COMPLETED bron, bittadan)' })
   createReview(@Body() dto: CreateReviewDto, @CurrentUser() u: AuthUser) {
     return this.svc.createReview(u.id, dto);
   }
@@ -34,15 +35,15 @@ export class EngagementController {
   myReviews(@CurrentUser() u: AuthUser) {
     return this.svc.myReviews(u.id);
   }
-  @Patch('reviews/:id')
+  @RateLimit('write') @Patch('reviews/:id')
   updateReview(@Param('id', uuid) id: string, @Body() dto: UpdateReviewDto, @CurrentUser() u: AuthUser) {
     return this.svc.updateReview(u.id, id, dto);
   }
-  @Delete('reviews/:id')
+  @RateLimit('write') @Delete('reviews/:id')
   deleteReview(@Param('id', uuid) id: string, @CurrentUser() u: AuthUser) {
     return this.svc.deleteReview(u.id, id);
   }
-  @Public() @Get('branches/:id/reviews')
+  @RateLimit('public') @Public() @Get('branches/:id/reviews')
   branchReviews(@Param('id', uuid) id: string, @Query() q: ReviewListQuery) {
     return this.svc.branchReviews(id, q);
   }
@@ -54,7 +55,7 @@ export class EngagementController {
   reply(@Param('id', uuid) id: string, @Body() dto: ReplyDto, @Grants() g: Grant[], @CurrentActor() a: Actor) {
     return this.svc.reply(id, dto.text, g, a);
   }
-  @Post('reviews/:id/report')
+  @RateLimit('write') @Post('reviews/:id/report')
   report(@Param('id', uuid) id: string, @CurrentUser() u: AuthUser) {
     return this.svc.report(id, u.id);
   }
@@ -72,17 +73,17 @@ export class EngagementController {
   favorites(@CurrentUser() u: AuthUser) {
     return this.svc.favorites(u.id);
   }
-  @Put('favorites/:branchId')
+  @RateLimit('write') @Put('favorites/:branchId')
   addFavorite(@Param('branchId', uuid) id: string, @CurrentUser() u: AuthUser) {
     return this.svc.addFavorite(u.id, id);
   }
-  @Delete('favorites/:branchId')
+  @RateLimit('write') @Delete('favorites/:branchId')
   removeFavorite(@Param('branchId', uuid) id: string, @CurrentUser() u: AuthUser) {
     return this.svc.removeFavorite(u.id, id);
   }
 
   // ---- Support ----
-  @Post('support/tickets')
+  @RateLimit('write') @Post('support/tickets')
   async createTicket(@Body() dto: CreateTicketDto, @CurrentUser() u: AuthUser) {
     return this.svc.createTicket(u.id, dto, await this.rbac.grants(u.id));
   }
@@ -98,7 +99,7 @@ export class EngagementController {
   async ticket(@Param('id', uuid) id: string, @CurrentUser() u: AuthUser) {
     return this.svc.ticket(id, u.id, await this.rbac.grants(u.id));
   }
-  @Post('support/tickets/:id/messages')
+  @RateLimit('write') @Post('support/tickets/:id/messages')
   async message(@Param('id', uuid) id: string, @Body() dto: TicketMessageDto, @CurrentUser() u: AuthUser) {
     return this.svc.addMessage(id, u.id, dto.body, await this.rbac.grants(u.id));
   }
@@ -132,7 +133,7 @@ export class EngagementController {
   updatePrefs(@Body() dto: NotificationPrefsDto, @CurrentUser() u: AuthUser) {
     return this.notif.updatePrefs(u.id, dto);
   }
-  @Post('users/me/device-tokens')
+  @RateLimit('write') @Post('users/me/device-tokens')
   token(@Body() dto: DeviceTokenDto, @CurrentUser() u: AuthUser) {
     return this.svc.registerDeviceToken(u.id, dto.token, dto.platform, dto.app_version);
   }
@@ -142,11 +143,11 @@ export class EngagementController {
   }
 
   // ---- E'lonlar ----
-  @Public() @Get('announcements') @ApiOperation({ summary: 'Platforma e\'lonlari' })
+  @RateLimit('public') @Public() @Get('announcements') @ApiOperation({ summary: 'Platforma e\'lonlari' })
   platformAnnouncements() {
     return this.svc.announcements(null);
   }
-  @Public() @Get('clubs/:clubId/announcements')
+  @RateLimit('public') @Public() @Get('clubs/:clubId/announcements')
   clubAnnouncements(@Param('clubId', uuid) id: string) {
     return this.svc.announcements(id);
   }
@@ -177,7 +178,7 @@ export class EngagementController {
     return this.svc.createPromotion(id, dto, a);
   }
   // ---- Ijtimoiy tarmoqlar (mijozlarga "obuna bo'ling" taklifi) ----
-  @Public() @Get('social') @ApiOperation({ summary: 'Platformaning ijtimoiy tarmoq havolalari va taklif bannerini ko\'rsatish' })
+  @RateLimit('public') @Public() @Get('social') @ApiOperation({ summary: 'Platformaning ijtimoiy tarmoq havolalari va taklif bannerini ko\'rsatish' })
   social() {
     return this.svc.social();
   }
@@ -206,7 +207,7 @@ export class EngagementController {
   async deletePromotion(@Param('id', uuid) id: string, @CurrentUser() u: AuthUser, @CurrentActor() a: Actor) {
     return this.svc.deletePromotion(id, await this.rbac.grants(u.id), a);
   }
-  @Post('promotions/validate')
+  @RateLimit('promo') @Post('promotions/validate')
   validate(@Body() dto: ValidatePromoDto, @CurrentUser() u: AuthUser) {
     return this.svc.validatePromo(u.id, dto.code, dto.branch_id, dto.amount, dto.start_at, dto.device_ids);
   }

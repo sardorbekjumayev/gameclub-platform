@@ -2,8 +2,10 @@ import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/auth.decorators';
 import { DiscoveryService, MapQuery, SearchQuery, SummaryQuery } from './discovery.service';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
 @ApiTags('discovery')
+@RateLimit('public')
 @Controller('discovery')
 export class DiscoveryController {
   constructor(private readonly discovery: DiscoveryService) {}
@@ -31,6 +33,7 @@ export class DiscoveryController {
 
 /** Hujjatdagi yo'llar bilan moslik: /branches/nearby|search|map (docs/01-API.md §6.7). */
 @ApiTags('discovery')
+@RateLimit('public')
 @Controller('branches')
 export class DiscoveryAliasController {
   constructor(private readonly discovery: DiscoveryService) {}

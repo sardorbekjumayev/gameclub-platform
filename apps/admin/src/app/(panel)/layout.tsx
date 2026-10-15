@@ -1,10 +1,11 @@
 "use client";
 
-import { BarChart3, Building, ClipboardCheck, Inbox, Layers, LayoutDashboard, LifeBuoy, LogOut, type LucideIcon, Menu, MessageSquareWarning, Radio, Share2, TicketPercent, UserCircle, Users, Wallet, X } from "lucide-react";
+import { BarChart3, Building, ClipboardCheck, Inbox, Layers, LayoutDashboard, LifeBuoy, LogOut, type LucideIcon, Menu, MessageSquareWarning, Radio, Scale, Share2, TicketPercent, UserCircle, Users, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CLUB_TABS } from "@/components/club-tabs";
+import { ForcePasswordChange } from "@/components/force-password";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { useSupportAwaiting } from "@/components/support";
 import { WrongPanel } from "@/components/wrong-panel";
@@ -25,6 +26,7 @@ const PLATFORM_NAV: NavItem[] = [
   { href: "/platform/users", label: "nav.users", icon: Users, permission: "platform.users.view", section: "nav.section.platform" },
   { href: "/platform/support", label: "nav.support", icon: Inbox, permission: "platform.tickets.manage", section: "nav.section.platform" },
   { href: "/platform/social", label: "nav.social", icon: Share2, permission: "platform.settings.manage", section: "nav.section.platform" },
+  { href: "/platform/legal", label: "nav.legal", icon: Scale, permission: "platform.settings.manage", section: "nav.section.platform" },
   { href: "/platform/reviews", label: "nav.reviewModeration", icon: MessageSquareWarning, permission: "platform.reviews.moderate", section: "nav.section.platform" },
   { href: "/platform/payouts", label: "nav.payouts", icon: Wallet, permission: "platform.payouts.manage", section: "nav.section.platform" },
 ];
@@ -68,6 +70,9 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
       </div>
     );
   }
+
+  // Admin parolni tiklagan — har qanday sahifadan oldin yangi parol (uchala panel)
+  if (me.must_change_password) return <ForcePasswordChange />;
 
   // Klubi yo'q mijoz — klub panelida faqat klub ochish wizard'i
   const isCustomerOnly = me.roles.every((r) => r.role === "CUSTOMER");

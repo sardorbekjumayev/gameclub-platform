@@ -10,6 +10,7 @@ import {
   CancelRentalDto, CreateRentalDto, HandoverDto, RejectRentalDto, RentalItemDto, RentalItemsQuery, RentalListQuery, RentalQuoteQuery, RentalSlotsQuery, ReturnRentalDto, UpdateRentalItemDto,
 } from './dto/rentals.dto';
 import { Caller, RentalsService } from './rentals.service';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
 const uuid = new ParseUUIDPipe();
 
@@ -27,20 +28,20 @@ export class RentalsController {
   }
 
   // ---------- Ommaviy katalog ----------
-  @Public() @Get('rental-items') @ApiOperation({ summary: "Arendaga beriladigan konsollar (barcha faol klublar)" })
+  @RateLimit('public') @Public() @Get('rental-items') @ApiOperation({ summary: "Arendaga beriladigan konsollar (barcha faol klublar)" })
   catalog(@Query() q: RentalItemsQuery) {
     return this.rentals.catalog(q);
   }
-  @Public() @Get('rental-items/:id')
+  @RateLimit('public') @Public() @Get('rental-items/:id')
   item(@Param('id', uuid) id: string) {
     return this.rentals.item(id);
   }
-  @Public() @Get('rental-items/:id/quote') @ApiOperation({ summary: "Narx va bo'sh donalar (soatlik/kunlik)" })
+  @RateLimit('public') @Public() @Get('rental-items/:id/quote') @ApiOperation({ summary: "Narx va bo'sh donalar (soatlik/kunlik)" })
   quote(@Param('id', uuid) id: string, @Query() q: RentalQuoteQuery) {
     return this.rentals.quote(id, q);
   }
 
-  @Public() @Get('rental-items/:id/slots') @ApiOperation({ summary: "Kun bo'yicha olib ketish vaqtlari (ish vaqti va bo'sh donalar hisobga olingan)" })
+  @RateLimit('public') @Public() @Get('rental-items/:id/slots') @ApiOperation({ summary: "Kun bo'yicha olib ketish vaqtlari (ish vaqti va bo'sh donalar hisobga olingan)" })
   slots(@Param('id', uuid) id: string, @Query() q: RentalSlotsQuery) {
     return this.rentals.slots(id, q);
   }
@@ -64,7 +65,7 @@ export class RentalsController {
   }
 
   // ---------- Buyurtmalar ----------
-  @Post('rentals') @Idempotent() @ApiOperation({ summary: "Arenda so'rovi (REQUESTED — klub tasdiqlaydi)" })
+  @RateLimit('write') @Post('rentals') @Idempotent() @ApiOperation({ summary: "Arenda so'rovi (REQUESTED — klub tasdiqlaydi)" })
   async create(@Body() dto: CreateRentalDto, @CurrentUser() u: AuthUser, @Headers('idempotency-key') key?: string) {
     return this.rentals.create(dto, await this.caller(u), key);
   }
@@ -76,7 +77,7 @@ export class RentalsController {
   async get(@Param('id', uuid) id: string, @CurrentUser() u: AuthUser) {
     return this.rentals.get(id, await this.caller(u));
   }
-  @Post('rentals/:id/cancel') @Idempotent()
+  @RateLimit('write') @Post('rentals/:id/cancel') @Idempotent()
   async cancel(@Param('id', uuid) id: string, @Body() dto: CancelRentalDto, @CurrentUser() u: AuthUser) {
     return this.rentals.cancel(id, await this.caller(u), dto.reason);
   }

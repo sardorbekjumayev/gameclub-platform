@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Alert, Button, Card, cx } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session } from "@/lib/session";
 import type { BookingDetail } from "@/lib/types";
-import { idemKey } from "@/lib/use-api";
+import { useSubmitKey } from "@/lib/use-api";
 
 function Stars({ value, onChange }: { value: number; onChange?: (n: number) => void }) {
   const { t } = useI18n();
@@ -43,6 +43,8 @@ export function BookingReview({ booking, onChange }: { booking: BookingDetail; o
   const [rating, setRating] = useState(review?.rating ?? 0);
   const [text, setText] = useState(review?.text ?? "");
   const [busy, setBusy] = useState<string | null>(null);
+  const saving = useRef(false);
+  const submitKey = useSubmitKey();
   const [msg, setMsg] = useState<{ tone: "error" | "success"; text: string } | null>(null);
 
   if (!review && !booking.can_review) return null;
@@ -50,12 +52,18 @@ export function BookingReview({ booking, onChange }: { booking: BookingDetail; o
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (rating < 1) return setMsg({ tone: "error", text: t("reviews.pickRating") });
+    // Ikki marta bosish: `busy` keyingi render'gacha yangilanmaydi — ref darhol to'sadi
+    if (saving.current) return;
+    saving.current = true;
     setBusy("save");
     setMsg(null);
     try {
       const body = { rating, text: text.trim() || undefined };
       if (review) await session.patch(`/reviews/${review.id}`, { ...body, text: text.trim() });
-      else await session.post("/reviews", { booking_id: booking.id, ...body }, { "Idempotency-Key": idemKey() });
+      else {
+        const create = { booking_id: booking.id, ...body };
+        await session.post("/reviews", create, { "Idempotency-Key": submitKey(create) });
+      }
       setEditing(false);
       setMsg({ tone: "success", text: t("reviews.saved") });
       onChange();
@@ -63,6 +71,7 @@ export function BookingReview({ booking, onChange }: { booking: BookingDetail; o
       setMsg({ tone: "error", text: errorText(err) });
     } finally {
       setBusy(null);
+      saving.current = false;
     }
   }
 

@@ -7,7 +7,7 @@
   "scripts": {
     "gen": "openapi-typescript openapi.json -o src/openapi.d.ts",
     "lint": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/money.test.ts src/time.test.ts"
+    "test": "node --experimental-strip-types --test src/money.test.ts src/time.test.ts src/markdown.test.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

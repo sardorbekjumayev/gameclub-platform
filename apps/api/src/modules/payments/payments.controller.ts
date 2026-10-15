@@ -9,6 +9,7 @@ import { type Actor } from '../clubs/clubs.service';
 import { RbacService, type Grant } from '../rbac/rbac.service';
 import { CashPaymentDto, CloseShiftDto, CompleteRefundDto, CreatePaymentDto, DemoConfirmDto, OpenShiftDto, PaymentListQuery, RefundDto, RefundListQuery, RejectTransferDto, ShiftListQuery, TransferPaymentDto } from './dto/payments.dto';
 import { PaymentsService } from './payments.service';
+import { NoRateLimit, RateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
 const uuid = new ParseUUIDPipe();
 
@@ -21,12 +22,12 @@ export class PaymentsController {
     private readonly rbac: RbacService,
   ) {}
 
-  @Post('payments') @Idempotent() @ApiOperation({ summary: 'Online to\'lov (checkout) yaratish' })
+  @RateLimit('write') @Post('payments') @Idempotent() @ApiOperation({ summary: 'Online to\'lov (checkout) yaratish' })
   create(@Body() dto: CreatePaymentDto, @CurrentUser() u: AuthUser) {
     return this.payments.checkout(u.id, dto.booking_id, dto.provider, dto.return_url);
   }
 
-  @Post('payments/transfer') @Idempotent() @ApiOperation({ summary: "Mijoz: klub kartasiga o'tkazdim (klub tasdiqlashini kutadi)" })
+  @RateLimit('write') @Post('payments/transfer') @Idempotent() @ApiOperation({ summary: "Mijoz: klub kartasiga o'tkazdim (klub tasdiqlashini kutadi)" })
   transfer(@Body() dto: TransferPaymentDto, @CurrentUser() u: AuthUser) {
     return this.payments.transfer(u.id, dto);
   }
@@ -51,17 +52,17 @@ export class PaymentsController {
     return this.payments.completeRefund(id, dto, g, a);
   }
 
-  @Public() @Get('payments/providers') @ApiOperation({ summary: "Yoqilgan online to'lov provayderlari" })
+  @RateLimit('public') @Public() @Get('payments/providers') @ApiOperation({ summary: "Yoqilgan online to'lov provayderlari" })
   providers() {
     return this.payments.providersList();
   }
 
-  @Post('payments/:id/demo/confirm') @ApiOperation({ summary: 'DEMO provayder: to\'lovni tasdiqlash/rad etish' })
+  @RateLimit('write') @Post('payments/:id/demo/confirm') @ApiOperation({ summary: 'DEMO provayder: to\'lovni tasdiqlash/rad etish' })
   demo(@Param('id', uuid) id: string, @Body() dto: DemoConfirmDto, @CurrentUser() u: AuthUser) {
     return this.payments.demoConfirm(u.id, id, dto.success);
   }
 
-  @Public() @Post('webhooks/payments/demo') @ApiOperation({ summary: 'DEMO webhook (X-Signature HMAC)' })
+  @NoRateLimit() @Public() @Post('webhooks/payments/demo') @ApiOperation({ summary: 'DEMO webhook (X-Signature HMAC)' })
   webhook(@Req() req: Request, @Headers('x-signature') sig?: string) {
     return this.payments.demoWebhook(JSON.stringify(req.body ?? {}), sig);
   }

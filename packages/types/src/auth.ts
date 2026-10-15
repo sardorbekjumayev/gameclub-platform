@@ -1,4 +1,4 @@
-import { ApiError, ApiResponse } from './api';
+import { ApiError, ApiResponse, isForm } from './api';
 
 export interface AuthTokens {
   access_token: string;
@@ -23,12 +23,15 @@ export interface Me {
   language: 'uz' | 'ru' | 'en';
   status: string;
   has_password: boolean;
+  /** Admin parolni tiklagan — boshqa amallardan oldin yangi parol o'rnatilishi shart. */
+  must_change_password: boolean;
   roles: MeRole[];
   permissions: string[];
 }
 
 export interface LoginResult extends AuthTokens {
   is_new: boolean;
+  must_change_password: boolean;
   user: Me;
 }
 
@@ -74,12 +77,13 @@ export function createSessionClient(opts: {
     const res = await fetch(`${opts.baseUrl}${path}`, {
       method,
       headers: {
-        'Content-Type': 'application/json',
+        // FormData (fayl yuklash) — Content-Type'ni brauzer o'zi qo'yadi (multipart boundary bilan)
+        ...(isForm(body) ? {} : { 'Content-Type': 'application/json' }),
         'Accept-Language': opts.language?.() ?? 'uz',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isForm(body) ? body : JSON.stringify(body),
     });
     const json = (await res.json().catch(() => null)) as ApiResponse<T> | null;
     if (!json) throw new ApiError(res.status, 'NETWORK_ERROR', res.statusText);

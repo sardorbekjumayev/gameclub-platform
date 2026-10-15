@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { RequireAuth } from "@/components/require-auth";
 import { MessageThread, TicketStatusBadge, textarea } from "@/components/support";
 import { Alert, Button, Card, Heading, Spinner } from "@/components/ui";
@@ -28,9 +28,13 @@ function Ticket() {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sending = useRef(false);
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
+    // Ikki marta bosish: `busy` keyingi render'gacha yangilanmaydi — ref darhol to'sadi
+    if (sending.current) return;
+    sending.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -41,6 +45,7 @@ function Ticket() {
       setError(errorText(err));
     } finally {
       setBusy(false);
+      sending.current = false;
     }
   }
 

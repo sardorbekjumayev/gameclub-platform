@@ -10,6 +10,9 @@ export const CLUB_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'ACTIVE', 'SUSPENDED'
 const PHONE = /^\+998\d{9}$/;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+
+/** Logo/muqova: tashqi havola yoki o'z storage'imiz (POST /files CLUB_MEDIA → public_url; dev'da localhost ham). */
+const MEDIA_URL = { protocols: ['http', 'https'], require_protocol: true, require_tld: false };
 export class CreateClubDto {
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(120) name!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(4000) description?: string;
@@ -17,8 +20,8 @@ export class CreateClubDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) telegram?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) instagram?: string;
   @ApiPropertyOptional() @IsOptional() @IsUrl() website?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUrl() logo_url?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUrl() cover_url?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUrl(MEDIA_URL) logo_url?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUrl(MEDIA_URL) cover_url?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(4000) rules?: string;
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) amenities?: string[];
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(15) @Max(1440) min_booking_minutes?: number;
@@ -33,8 +36,8 @@ export class UpdateClubDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) telegram?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) instagram?: string;
   @ApiPropertyOptional() @IsOptional() @IsUrl() website?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUrl() logo_url?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUrl() cover_url?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUrl(MEDIA_URL) logo_url?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUrl(MEDIA_URL) cover_url?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(4000) rules?: string;
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) amenities?: string[];
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(15) @Max(1440) min_booking_minutes?: number;
@@ -65,16 +68,25 @@ export class TransferCardDto {
   @ApiProperty({ example: '8600123412341234', description: '16 raqam (bo\'shliqlarsiz)' }) @Matches(/^\d{16}$/) number!: string;
   @ApiProperty({ example: 'ALISHER KARIMOV' }) @IsString() @MinLength(2) @MaxLength(80) holder!: string;
 }
+export class TransferLinkDto {
+  @ApiProperty({ example: 'https://my.click.uz/services/pay?service_id=...', description: "Klubning to'lov havolasi (Click/Payme/bank QR havolasi) — faqat https" })
+  @IsUrl({ protocols: ['https'], require_protocol: true }) @MaxLength(500) url!: string;
+  @ApiPropertyOptional({ example: 'Click', description: "Tugmadagi nom (masalan, Click, Payme, Uzum)" }) @IsOptional() @IsString() @MaxLength(40) label?: string;
+}
 export class ClubSettingsDto {
   @ApiPropertyOptional() @IsOptional() @ValidateNested() @Type(() => CancellationPolicyDto) cancellation_policy?: CancellationPolicyDto;
   @ApiPropertyOptional({ type: TransferCardDto, nullable: true, description: 'null — kartani o\'chirish (mijozlar kartaga o\'tkaza olmaydi)' })
   @IsOptional() @ValidateNested() @Type(() => TransferCardDto) transfer_card?: TransferCardDto | null;
+  @ApiPropertyOptional({ type: TransferLinkDto, nullable: true, description: "null — havolani o'chirish. Karta va havola birga bo'lishi mumkin — mijoz tanlaydi" })
+  @IsOptional() @ValidateNested() @Type(() => TransferLinkDto) transfer_link?: TransferLinkDto | null;
+  @ApiPropertyOptional({ description: "true — o'tkazmada chek (skrinshot/PDF) yuborish majburiy" }) @IsOptional() @IsBoolean() transfer_receipt_required?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsObject() settings?: Record<string, unknown>;
 }
 
 export class ClubDocumentDto {
   @ApiProperty({ enum: ['LICENSE', 'TAX_ID', 'PASSPORT', 'OTHER'] }) @IsIn(['LICENSE', 'TAX_ID', 'PASSPORT', 'OTHER']) type!: string;
-  @ApiProperty() @IsUrl() file_url!: string;
+  @ApiPropertyOptional({ description: 'Tashqi havola — yoki file_id' }) @IsOptional() @IsUrl() file_url?: string;
+  @ApiPropertyOptional({ description: 'POST /files purpose=CLUB_DOCUMENT natijasi' }) @IsOptional() @IsUUID() file_id?: string;
 }
 
 export class ReviewDocumentDto {
@@ -177,6 +189,10 @@ export class InviteStaffDto {
   @ApiProperty() @Matches(PHONE) phone!: string;
   @ApiProperty({ enum: STAFF_ROLES }) @IsIn(STAFF_ROLES) role!: string;
   @ApiPropertyOptional({ description: 'BRANCH_ADMIN/OPERATOR uchun majburiy' }) @IsOptional() @IsUUID() branch_id?: string;
+}
+export class ResetStaffPasswordDto {
+  @ApiPropertyOptional({ description: 'Berilmasa server kuchli vaqtinchalik parol yaratadi. Javobda faqat bir marta qaytadi.', minLength: 8 })
+  @IsOptional() @IsString() @MinLength(8) @MaxLength(128) password?: string;
 }
 export class InvitationTokenDto {
   @ApiProperty() @IsString() @MinLength(20) @MaxLength(200) token!: string;

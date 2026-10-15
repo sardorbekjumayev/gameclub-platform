@@ -7,6 +7,7 @@ import Redis from 'ioredis';
 import type { Server, Socket } from 'socket.io';
 import { PrismaService } from '../../database/prisma.service';
 import { REDIS } from '../../infra/redis/redis.module';
+import { accessCutoffKey } from '../auth/password';
 import { RbacService } from '../rbac/rbac.service';
 import { RealtimeService } from './realtime.service';
 
@@ -40,7 +41,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
     const token = (client.handshake.auth as { token?: string } | undefined)?.token;
     try {
       if (!token) throw new Error('no token');
-      const payload = await this.jwt.verifyAsync<{ sub: string }>(token);
+      const payload = await this.jwt.verifyAsync<{ sub: string; iat?: number }>(token);
+      // Parol tiklangandan oldingi token bilan ulanib bo'lmaydi (JwtAuthGuard bilan bir xil qoida)
+      const cutoff = await this.redis.get(accessCutoffKey(payload.sub));
+      if (cutoff && (payload.iat ?? 0) < Number(cutoff)) throw new Error('revoked');
       (client.data as SocketData).userId = payload.sub;
       await client.join(`user:${payload.sub}`);
     } catch {

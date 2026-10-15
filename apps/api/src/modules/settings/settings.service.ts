@@ -35,12 +35,18 @@ export class SettingsService {
     return (await this.all())[key] as T;
   }
 
-  async set(key: string, value: unknown, userId: string) {
-    await this.prisma.platform_settings.upsert({
+  /** `tx` — boshqa yozuvlar (audit) bilan bitta tranzaksiyada saqlash uchun. */
+  async set(key: string, value: unknown, userId: string, tx: Prisma.TransactionClient = this.prisma) {
+    await tx.platform_settings.upsert({
       where: { key },
       update: { value: value as Prisma.InputJsonValue, updated_by: userId },
       create: { id: uuidv7(), key, value: value as Prisma.InputJsonValue, updated_by: userId },
     });
+    this.cache = null;
+  }
+
+  /** Tranzaksiya commit bo'lgach keshni tozalash (commit'dan oldingi o'qish eski qiymatni keshlab qo'ymasin). */
+  invalidate() {
     this.cache = null;
   }
 }

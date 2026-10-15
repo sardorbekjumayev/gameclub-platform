@@ -9,6 +9,7 @@ import { Alert, Button, Card, Heading, Input, Stat } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session, useAuth } from "@/lib/session";
 import { AssignPlan } from "@/components/assign-plan";
+import { ClubManagersCard } from "@/components/staff-password";
 import { SubscriptionCard } from "@/components/subscription-card";
 import type { Club, ClubSubscription } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
@@ -135,6 +136,8 @@ export default function AdminClubPage() {
             </Card>
           </div>
 
+          <ClubManagersCard clubId={c.id} />
+
           <Card className="space-y-3">
             <div className="font-display text-lg font-bold">{t("club.documents")}</div>
             {c.documents?.length === 0 && <Empty>{t("club.documentsEmpty")}</Empty>}
@@ -143,9 +146,11 @@ export default function AdminClubPage() {
                 <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm">
                   <div>
                     <div className="font-bold">{t(`doc.${d.type}` as never)}</div>
-                    <a href={d.file_url} target="_blank" rel="noreferrer" className="break-all text-xs text-accent underline">
-                      {d.file_url}
-                    </a>
+                    {d.file_url && (
+                      <a href={d.file_url} target="_blank" rel="noreferrer" className="break-all text-xs text-accent underline">
+                        {d.file_id ? t("upload.open") : d.file_url}
+                      </a>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={d.status} />

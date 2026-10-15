@@ -13,6 +13,19 @@ const STATUS_TO_CODE: Record<number, ErrorCode> = {
   429: 'RATE_LIMITED',
 };
 
+/** `http-errors` uslubidagi klient xatosi (`expose: true`, 4xx status). */
+function isClientHttpError(e: unknown): e is Error & { status: number } {
+  const x = e as { status?: unknown; expose?: unknown } | null;
+  return e instanceof Error && typeof x?.status === 'number' && x.status >= 400 && x.status < 500 && x.expose === true;
+}
+
+/** Prisma: pool'dan ulanish olinmadi (P2024) yoki tranzaksiya kutish/vaqt chegarasidan oshdi (P2028). */
+function isOverloaded(e: unknown): e is Error {
+  if (!(e instanceof Error)) return false;
+  const code = (e as { code?: string }).code;
+  return code === 'P2024' || code === 'P2028' || /Timed out fetching a new connection|Transaction already closed|Unable to start a transaction in the given time/.test(e.message);
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('Exceptions');
@@ -46,6 +59,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
       } else {
         message = exception.message;
       }
+    } else if (isClientHttpError(exception)) {
+      // body-parser xatolari (masalan, 100 KB dan katta JSON — 413, buzuq JSON — 400) 500 emas
+      status = exception.status;
+      code = STATUS_TO_CODE[status] ?? 'VALIDATION_ERROR';
+      message = exception.message;
+    } else if (isOverloaded(exception)) {
+      // DB ulanish pool'i to'lgan (yuklama cho'qqisi) — 500 emas, klient qayta urinadi
+      status = HttpStatus.TOO_MANY_REQUESTS;
+      code = 'RATE_LIMITED';
+      message = 'Server is busy, please retry';
+      details = { retry_after: 2, reason: 'OVERLOADED' };
+      res.setHeader('Retry-After', '2');
+      this.logger.warn(`overloaded: ${(exception as Error).message.split('\n').pop()}`, requestId);
     } else {
       this.logger.error(exception instanceof Error ? exception.stack : String(exception), requestId);
     }

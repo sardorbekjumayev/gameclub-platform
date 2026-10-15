@@ -34,6 +34,7 @@
     "@nestjs/platform-express": "^11.2.6",
     "@nestjs/platform-socket.io": "^11.2.6",
     "@nestjs/swagger": "^11.4.7",
+    "@nestjs/throttler": "6.7.1",
     "@nestjs/websockets": "^11.2.6",
     "@prisma/client": "^6.19.3",
     "@socket.io/redis-adapter": "^8.3.0",

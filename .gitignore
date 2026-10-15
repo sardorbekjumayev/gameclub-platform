@@ -9,3 +9,12 @@ coverage
 
 # gameclub-mobile repo shu papkaga alohida clone qilinadi
 mobile/
+
+# Yuklangan fayllar (STORAGE_DIR)
+apps/api/storage/
+
+# Claude Code agent worktree'lari
+.claude/worktrees/
+# k6 yuklama testi ma'lumotlari (setup-data.mjs)
+loadtest/.data.json
+loadtest/results/

@@ -10,9 +10,10 @@ import { BranchesService } from './branches.service';
 import { type Actor, ClubsService } from './clubs.service';
 import {
   AddStaffDto, AdminCreateClubDto, ClubDocumentDto, ClubListQuery, ClubSettingsDto, CreateBranchDto, CreateClubDto, CreateRoomDto,
-  CustomerNoteDto, HoursExceptionDto, InviteStaffDto, ReviewDocumentDto, UpdateBranchDto, UpdateClubDto, UpdateRoomDto, UpdateStaffDto,
+  CustomerNoteDto, HoursExceptionDto, InviteStaffDto, ResetStaffPasswordDto, ReviewDocumentDto, UpdateBranchDto, UpdateClubDto, UpdateRoomDto, UpdateStaffDto,
 } from './dto/clubs.dto';
 import { StaffService } from './staff.service';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
 const uuid = new ParseUUIDPipe({ version: undefined });
 
@@ -28,7 +29,7 @@ export class ClubsController {
   ) {}
 
   // ---------- Ommaviy ----------
-  @Public() @Get('clubs') @ApiOperation({ summary: 'ACTIVE klublar' })
+  @RateLimit('public') @Public() @Get('clubs') @ApiOperation({ summary: 'ACTIVE klublar' })
   list(@Query() q: PageQuery) {
     return this.clubs.listPublic(q);
   }
@@ -38,12 +39,12 @@ export class ClubsController {
     return this.clubs.mine(u.id);
   }
 
-  @Public() @Get('clubs/:idOrSlug/public') @ApiOperation({ summary: 'Klub ommaviy sahifasi' })
+  @RateLimit('public') @Public() @Get('clubs/:idOrSlug/public') @ApiOperation({ summary: 'Klub ommaviy sahifasi' })
   getPublic(@Param('idOrSlug') idOrSlug: string) {
     return this.clubs.getPublic(idOrSlug);
   }
 
-  @Post('clubs') @ApiOperation({ summary: 'Klub arizasi (DRAFT); yaratuvchi CLUB_OWNER bo\'ladi' })
+  @RateLimit('write') @Post('clubs') @ApiOperation({ summary: 'Klub arizasi (DRAFT); yaratuvchi CLUB_OWNER bo\'ladi' })
   create(@Body() dto: CreateClubDto, @CurrentUser() u: AuthUser, @CurrentActor() a: Actor) {
     return this.clubs.create(u.id, dto, a);
   }
@@ -84,7 +85,7 @@ export class ClubsController {
   }
 
   // ---------- Filiallar ----------
-  @Public() @Get('clubs/:clubId/branches') @ApiOperation({ summary: 'Filiallar (ommaviy: ACTIVE; xodim: hammasi)' })
+  @RateLimit('public') @Public() @Get('clubs/:clubId/branches') @ApiOperation({ summary: 'Filiallar (ommaviy: ACTIVE; xodim: hammasi)' })
   async branchList(@Param('clubId', uuid) id: string, @CurrentUser() u?: AuthUser) {
     const grants = u ? await this.rbac.grants(u.id) : null;
     return this.branches.listForClub(id, grants && grants.some((g) => g.permissions.includes('branches.view')) ? grants : null);
@@ -95,7 +96,7 @@ export class ClubsController {
     return this.branches.create(id, dto, a);
   }
 
-  @Public() @Get('branches/:idOrSlug') @ApiOperation({ summary: 'Filial ommaviy sahifasi' })
+  @RateLimit('public') @Public() @Get('branches/:idOrSlug') @ApiOperation({ summary: 'Filial ommaviy sahifasi' })
   branch(@Param('idOrSlug') id: string, @CurrentUser() u?: AuthUser) {
     return this.branches.getPublic(id, u?.id);
   }
@@ -170,6 +171,12 @@ export class ClubsController {
   @Delete('clubs/:clubId/staff/invitations/:invitationId') @RequirePermission('staff.create')
   revokeInvitation(@Param('clubId', uuid) id: string, @Param('invitationId', uuid) iid: string, @Grants() g: Grant[], @CurrentActor() a: Actor) {
     return this.staff.revokeInvitation(id, iid, g, a);
+  }
+
+  @Post('clubs/:clubId/staff/users/:userId/reset-password') @RequirePermission('staff.reset_password') @Idempotent({ redact: ['temporary_password'] })
+  @ApiOperation({ summary: 'Xodim parolini tiklash (ierarxiya bo\'yicha): vaqtinchalik parol javobda bir marta qaytadi, sessiyalar bekor, keyingi kirishda yangi parol shart' })
+  resetStaffPassword(@Param('clubId', uuid) id: string, @Param('userId', uuid) userId: string, @Body() dto: ResetStaffPasswordDto, @Grants() g: Grant[], @CurrentActor() a: Actor) {
+    return this.staff.resetPassword(id, userId, dto, g, a);
   }
 
   @Patch('clubs/:clubId/staff/:assignmentId') @RequirePermission('staff.update')

@@ -7,6 +7,7 @@ import { AppException } from '../../common/errors';
 import { Paginated } from '../../common/interceptors/response.interceptor';
 import { slugify } from '../../common/utils/codes';
 import { uuidv7 } from '../../common/utils/id';
+import { FilesService } from '../files/files.service';
 import { PlansService } from '../plans/plans.service';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -45,6 +46,7 @@ export class ClubsService {
     private readonly rbac: RbacService,
     private readonly notifications: NotificationsService,
     private readonly plans: PlansService,
+    private readonly files: FilesService,
   ) {}
 
   private async uniqueSlug(name: string, db: Prisma.TransactionClient = this.prisma) {
@@ -122,9 +124,10 @@ export class ClubsService {
       staff: await this.prisma.user_roles.count({ where: { club_id: clubId } }),
     };
     // Karta faqat settings.view orqali (GET /clubs/:id/settings)
-    const { transfer_card_number, transfer_card_holder, ...rest } = club;
+    const { transfer_card_number, transfer_card_holder, transfer_link_url, transfer_link_label, ...rest } = club;
     void transfer_card_holder;
-    return { ...rest, has_transfer_card: !!transfer_card_number, subscription: sub, counts, cancellation_policy: policyFrom(club.cancellation_policy) };
+    void transfer_link_label;
+    return { ...rest, documents: this.files.withDocUrls(rest.documents), has_transfer_card: !!transfer_card_number, has_transfer_link: !!transfer_link_url, subscription: sub, counts, cancellation_policy: policyFrom(club.cancellation_policy) };
   }
 
   /**
@@ -236,11 +239,16 @@ export class ClubsService {
 
   async settings(clubId: string, grants: Grant[]) {
     assertCan(grants, 'settings.view', { club_id: clubId });
-    const c = await this.prisma.clubs.findFirstOrThrow({ where: { id: clubId }, select: { cancellation_policy: true, settings: true, transfer_card_number: true, transfer_card_holder: true } });
+    const c = await this.prisma.clubs.findFirstOrThrow({
+      where: { id: clubId },
+      select: { cancellation_policy: true, settings: true, transfer_card_number: true, transfer_card_holder: true, transfer_link_url: true, transfer_link_label: true, transfer_receipt_required: true },
+    });
     return {
       cancellation_policy: policyFrom(c.cancellation_policy),
       settings: c.settings ?? {},
       transfer_card: c.transfer_card_number ? { number: c.transfer_card_number, holder: c.transfer_card_holder } : null,
+      transfer_link: c.transfer_link_url ? { url: c.transfer_link_url, label: c.transfer_link_label } : null,
+      transfer_receipt_required: c.transfer_receipt_required,
     };
   }
 
@@ -254,6 +262,7 @@ export class ClubsService {
     }
     const old = await this.settings(clubId, grants.length ? grants : []);
     const card = dto.transfer_card;
+    const link = dto.transfer_link;
     await this.prisma.clubs.update({
       where: { id: clubId },
       data: {
@@ -261,6 +270,9 @@ export class ClubsService {
         ...(dto.settings ? { settings: dto.settings as Prisma.InputJsonValue } : {}),
         ...(card === null ? { transfer_card_number: null, transfer_card_holder: null } : {}),
         ...(card ? { transfer_card_number: card.number, transfer_card_holder: card.holder.trim().toUpperCase() } : {}),
+        ...(link === null ? { transfer_link_url: null, transfer_link_label: null } : {}),
+        ...(link ? { transfer_link_url: link.url.trim(), transfer_link_label: link.label?.trim() || null } : {}),
+        ...(dto.transfer_receipt_required !== undefined ? { transfer_receipt_required: dto.transfer_receipt_required } : {}),
       },
     });
     // Karta raqami audit log'ga faqat maskalangan holda tushadi
@@ -271,14 +283,19 @@ export class ClubsService {
 
   async addDocument(clubId: string, dto: ClubDocumentDto, grants: Grant[], actor: Actor) {
     assertCan(grants, 'clubs.documents.manage', { club_id: clubId });
-    const doc = await this.prisma.club_documents.create({ data: { id: uuidv7(), club_id: clubId, type: dto.type, file_url: dto.file_url } });
+    if (!!dto.file_url === !!dto.file_id) throw new AppException('VALIDATION_ERROR', 'Exactly one of file_url or file_id is required', { field: 'file_id' });
+    const doc = await this.prisma.$transaction(async (tx) => {
+      const id = uuidv7();
+      if (dto.file_id) await this.files.claimClubDocument(tx, dto.file_id, clubId, id);
+      return tx.club_documents.create({ data: { id, club_id: clubId, type: dto.type, file_url: dto.file_url ?? null, file_id: dto.file_id ?? null } });
+    });
     await this.audit.log({ actor_id: actor.id, club_id: clubId, action: 'club.document.add', target_type: 'club_document', target_id: doc.id, new_value: dto });
-    return doc;
+    return this.files.withDocUrls([doc])[0];
   }
 
   async documents(clubId: string, grants: Grant[]) {
     assertCan(grants, 'clubs.documents.manage', { club_id: clubId });
-    return this.prisma.club_documents.findMany({ where: { club_id: clubId }, orderBy: { created_at: 'desc' } });
+    return this.files.withDocUrls(await this.prisma.club_documents.findMany({ where: { club_id: clubId }, orderBy: { created_at: 'desc' } }));
   }
 
   // ---------- Super admin ----------
@@ -311,7 +328,7 @@ export class ClubsService {
     if (!club) throw new AppException('NOT_FOUND', 'Club not found');
     const owner = await this.prisma.users.findUnique({ where: { id: club.owner_id }, select: { id: true, phone: true, email: true, first_name: true, last_name: true } });
     const stats = await this.prisma.bookings.aggregate({ where: { club_id: clubId, status: { in: ['CONFIRMED', 'CHECKED_IN', 'ACTIVE', 'COMPLETED'] } }, _count: true, _sum: { total_amount: true } });
-    return { ...club, owner, stats: { bookings: stats._count, gmv: stats._sum.total_amount ?? 0n } };
+    return { ...club, documents: this.files.withDocUrls(club.documents), owner, stats: { bookings: stats._count, gmv: stats._sum.total_amount ?? 0n } };
   }
 
   async transition(clubId: string, action: keyof typeof TRANSITIONS, reason: string | undefined, actor: Actor) {

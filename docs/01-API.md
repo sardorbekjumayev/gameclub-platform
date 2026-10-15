@@ -61,7 +61,7 @@ Xato:
 
 **Soft delete:** DELETE endpointlar `deleted_at` qo'yadi. Faol bron/sessiyasi bor qurilma/filialni o'chirish `409 CONFLICT`.
 
-**Rate limit** (Redis, `@nestjs/throttler`): umumiy 120/min/IP; `POST /auth/send-otp` 3/10min/telefon + 10/soat/IP; `POST /auth/verify-otp` 5 urinish/kod; `POST /auth/login` 10/10min/IP+login; `POST /bookings` 20/min/user; payment webhook — IP allowlist/imzo bilan.
+**Rate limit** (Redis, `@nestjs/throttler`): darajalar va endpointlar — pastda «Rate limit (2026-10-15)». Bunga qo'shimcha servis ichidagi limitlar: `POST /auth/send-otp` 3/10min/telefon + 10/soat/IP + 60s cooldown; `POST /auth/verify-otp` 5 urinish/kod; `POST /auth/login` 10/10min/IP+login; payment webhook — imzo/Basic auth bilan (rate limit yo'q).
 
 ## 4. Autentifikatsiya
 
@@ -80,6 +80,7 @@ Xato:
 - Super Admin uchun 2FA **majburiy** 🆕.
 - Xodim taklifi 🆕: `POST /clubs/:clubId/staff/invitations` → SMS/email havola → `POST /auth/invitations/accept {token, password, name}`.
 - Parolni tiklash: `POST /auth/forgot-password`, `POST /auth/reset-password`.
+- Admin tomonidan tiklash 🆕 (2026-10-16): `POST /clubs/:clubId/staff/users/:userId/reset-password` — quyida "Xodim parolini tiklash" bo'limi.
 
 ### 4.3 Tokenlar
 - Access JWT 15 daqiqa (`sub`, `type`, `roles` qisqacha, `jti`). Refresh 30 kun, opaque random, DB'da **hash** (`refresh_tokens`), har ishlatilganda **rotation**; eski token qayta ishlatilsa (reuse) → butun `family_id` bekor qilinadi.
@@ -129,7 +130,7 @@ customers: customers.view, customers.notes.manage, customers.block
 payments:  payments.view, payments.create, payments.refund
 shifts:    shifts.open, shifts.close, shifts.view_all
 reports:   reports.view, reports.export
-staff:     staff.view, staff.create, staff.update, staff.delete, roles.manage
+staff:     staff.view, staff.create, staff.update, staff.delete, staff.reset_password, roles.manage
 reviews:   reviews.view, reviews.reply
 notifications: notifications.send, announcements.manage
 settings:  settings.view, settings.update
@@ -137,7 +138,7 @@ settings:  settings.view, settings.update
 Default rol → permission xaritasi seed faylida (`prisma/seed/rbac.ts`) yagona manba bo'lib turadi:
 - OPERATOR: `devices.view, devices.status.change, bookings.view/create/checkin/cancel, sessions.*, customers.view, payments.view/create, shifts.open/close`.
 - BRANCH_ADMIN: OPERATOR + `rooms.*, devices.*, tariffs.*, reports.view, staff.view, promotions.view` (o'z filiali).
-- CLUB_ADMIN: klub bo'yicha BRANCH_ADMIN + `branches.update, staff.*(operator darajasigacha), reports.export`.
+- CLUB_ADMIN: klub bo'yicha BRANCH_ADMIN + `branches.update, staff.*(operator darajasigacha), staff.reset_password, reports.export`.
 - CLUB_OWNER: klubdagi hamma permission (`platform.*` dan tashqari) + `roles.manage`.
 - Owner o'zidan yuqori/teng rolni bera olmaydi (privilege escalation oldi 🆕).
 
@@ -604,6 +605,7 @@ Migratsiya · DTO validatsiya · permission+scope · Swagger · idempotentlik (k
 - `GET /bookings/:id` — `cancellation_policy` (snapshot), `refund_preview {percent, amount}` (hozir bekor qilinsa), `transfer {card_number, card_holder, amount, pending, rejected} | null` (karta faqat to'lanmagan bron egasiga).
 - O'tkazma oqimi (2026-10-13): mijoz `POST /payments/transfer {booking_id, payer_card_last4, payer_name?}` → payment `PROCESSING`, bron `PENDING_PAYMENT` bo'lsa **darhol `CONFIRMED`** (hold o'chiriladi, chipta/QR faol, mijozga `BOOKING_CONFIRMED`), xodimlarga `TRANSFER_PENDING` + realtime `payment.transfer_pending`. Bron kodi bank ilovasida izoh sifatida (ixtiyoriy) ko'rsatiladi. Bitta bronda bitta ochiq o'tkazma (`CONFLICT reason=TRANSFER_PENDING`). Operator tasdiqlasa — `handleEvent` (PAID), mijozga `TRANSFER_CONFIRMED` ("To'lovingiz operator tomonidan tasdiqlandi"; `BOOKING_CONFIRMED` takrorlanmaydi). Rad etish → `FAILED`, bron `CONFIRMED`/`UNPAID` qoladi (klubda to'lash kabi), mijozga `TRANSFER_REJECTED`, qayta yuborish mumkin; soxta o'tkazmada xodim bronni bekor qiladi. `payments.transfer_confirm_minutes` endi ishlatilmaydi.
 - O'tkazma kutilayotganda mijoz bronni bekor qila olmaydi (`BOOKING_NOT_CANCELLABLE reason=TRANSFER_PENDING`); xodim qila oladi.
+- **To'lov havolasi va chek (2026-10-16):** klub kartaga qo'shimcha (yoki o'rniga) to'lov havolasini kiritadi — `PATCH /clubs/:id/settings {transfer_link: {url (faqat https), label?} | null, transfer_receipt_required?: boolean}` (Click/Payme/bank QR havolasi). `GET /bookings/:id` → `transfer {card_number|null, card_holder, link {url,label}|null, receipt_required, amount, pending (receipt_url bilan), rejected}`; `payment_options.card_transfer` — karta yoki havola bo'lsa `true`. Mijoz: `POST /payments/transfer {booking_id, channel: CARD|LINK, payer_card_last4 (CARD uchun majburiy), receipt_file_id?}` — chek avval `POST /files purpose=RECEIPT` bilan yuklanadi, faqat egasining, bir marta biriktiriladi (`VALIDATION_ERROR reason=RECEIPT_INVALID`); klub talab qilsa majburiy (`reason=RECEIPT_REQUIRED`); o'chiq kanal → `PAYMENT_FAILED reason=TRANSFER_CHANNEL_DISABLED`. `provider_payload` += `channel, link_label, receipt_file_id`. Xodim ro'yxati (`GET /payments?method=CARD_TRANSFER`) har qatorda `receipt_url`. Operator baribir qo'lda tasdiqlaydi.
 - `CARD_TRANSFER` to'lov refundi `PENDING` yaratiladi (mijozga `REFUND_PENDING`), klub pulni qaytargach `POST /refunds/:id/complete` → `REFUND_COMPLETED`.
 - Mijoz web/mobile: bron sahifasi **chipta** ko'rinishida (klub, manzil, sana/vaqt, o'rindiqlar va narxlari, summalar, to'lov usuli, kod + kichik QR — faqat CONFIRMED/CHECKED_IN), pastida qaytarish shartlari va "hozir bekor qilsangiz" summasi. Bron vidjetida to'lovdan oldin shartlar ko'rsatiladi.
 - Admin: klub paneli `/clubs/:id/payments` (karta, klubda to'lash, siyosat muharriri + oldindan ko'rish, o'tkazmalar va qaytarishlar); operator pulti `/live` da filial bo'yicha shu inbox.
@@ -665,3 +667,48 @@ Bot (`@<TELEGRAM_BOT_USERNAME>`) endi faqat OTP emas: bog'langan raqam (`telegra
 - **Klientlar:** admin tariflar sahifasida tarif ichida "Paketlar" bo'limi (nom, davomiylik, narx, kunlar, oyna, tejash ko'rsatkichi). Web/mobile bron vidjetida davomiylik qadamida "Paketlar" chiplari (narx, "−X so'm tejaysiz"); tanlansa davomiylik qulflanadi. Chiptada paket nomi. Operator pulti walk-in formasida paket tanlash. Paket chiplarida tarif nomi ham ko'rsatiladi (bir xil nomli paketlar turli xonalarda bo'lishi mumkin). Demo seed: har xona tarifiga "3 soat" (≈2.5 soat narxi) va "Tungi paket" 22:00–08:00, 8 soat (≈5 soat narxi). Mobile — hali yo'q.
 
 ### tariff_packages (migratsiya `20261013160000_tariff_packages`)
+
+### 6.19 files — o'z fayl saqlash joyimiz 🆕 (2026-10-16)
+- Fayl serverda `STORAGE_DIR` (prod: doimiy volume, backup'ga kiradi), metama'lumot `files` jadvalida (`owner_id, club_id, purpose, mime, size, sha256, storage_key, ref_type/ref_id`). S3 keyin kerak bo'lsa — faqat `FilesService` drayveri almashadi.
+- `POST /files` (multipart: `file`, `purpose`, `club_id?`) — tur faylning birinchi baytlari bo'yicha aniqlanadi (Content-Type/kengaytmaga ishonilmaydi): `RECEIPT` (har qanday mijoz; JPEG/PNG/WEBP/PDF), `CLUB_MEDIA` (`clubs.update`; JPEG/PNG/WEBP — ommaviy, `public_url` → `logo_url`/`cover_url`), `CLUB_DOCUMENT` (`clubs.documents.manage`; JPEG/PNG/PDF). Hajm `UPLOAD_MAX_MB` (10). Xato: `VALIDATION_ERROR reason=FILE_TYPE|FILE_TOO_LARGE`.
+- `GET /files/:id` — meta + havola: egasi, shu klub/filialda `payments.view|create` (chek), `clubs.documents.manage` / `platform.clubs.approve` (hujjat); boshqalarga 404. `GET /files/:id/raw` [public] — `CLUB_MEDIA` ochiq, qolganlari faqat imzolangan havola (`?exp&sig`, HMAC, 15 daqiqa). Javob: `X-Content-Type-Options: nosniff`, `CSP sandbox`.
+- `POST /clubs/:id/documents {type, file_url | file_id}` — `file_id` shu klub uchun yuklangan, biriktirilmagan `CLUB_DOCUMENT` bo'lishi kerak; ro'yxatlarda `file_url` imzolangan havola bo'lib qaytadi.
+- Biriktirilmagan cheklar 24 soatdan keyin o'chiriladi (soatlik fon vazifa).
+
+
+## Rate limit (2026-10-15)
+**Qaror:** barcha HTTP marshrutlar global guard (`common/rate-limit/`, `@nestjs/throttler` + o'zimizning Redis storage — Lua, atomar) orqali; hisoblagichlar Redis'da (`rl:*`), bir nechta API instansiyasi uchun umumiy. **Kalit:** token bo'lsa user id, aks holda klient IP (`trust proxy: loopback` — Nginx/Next proxy `X-Forwarded-For` beradi). Guard JWT guard'dan keyin, permission guard'dan oldin ishlaydi.
+- **Javob:** `429`, `error.code = RATE_LIMITED`, `error.details.retry_after` (soniya) va `Retry-After` header. Limit oshgach kalit oyna davomiyligiga bloklanadi. Web/admin: `retry_after` bo'lsa «N soniya/daqiqadan keyin» matni (`errors.RATE_LIMITED_SECONDS|MINUTES`).
+- **Sozlash** (`.env`, format `<so'rov>/<oyna soniya>`; bo'sh — standart):
+
+| Daraja | Env | Standart | Hisob | Endpointlar |
+|---|---|---|---|---|
+| global | `RATE_LIMIT_GLOBAL` | 300/60 | kalit bo'yicha, barcha marshrutlar umumiy | hammasi (istisnolardan tashqari) |
+| public | `RATE_LIMIT_PUBLIC` | 120/60 | marshrut + kalit | `GET /files/:id/raw`, `GET /discovery/*`, `GET /branches/{nearby,search,map,:id/summary}`, `GET /branches/:idOrSlug`, `/branches/:id/{availability,slots,reviews,device-categories,devices/public,tariffs,packages}`, `POST /branches/:id/price-quote`, `GET /clubs`, `/clubs/:idOrSlug/public`, `/clubs/:clubId/{branches,announcements}`, `GET /rental-items[/:id[/quote,/slots]]`, `GET /plans`, `/announcements`, `/social`, `/payments/providers` |
+| write | `RATE_LIMIT_WRITE` | 30/60 | marshrut + kalit | `POST /files`, `POST /bookings`, `/bookings/:id/{cancel,reschedule}`, `POST /rentals`, `/rentals/:id/cancel`, `POST /payments`, `/payments/transfer`, `/payments/:id/demo/confirm`, `POST|PATCH|DELETE /reviews[/:id]`, `/reviews/:id/report`, `PUT|DELETE /favorites/:branchId`, `POST /support/tickets`, `/support/tickets/:id/messages`, `POST /users/me/device-tokens`, `POST /clubs` |
+| sensitive | `RATE_LIMIT_SENSITIVE` | 20/300 | marshrut + kalit | `POST /auth/{login,send-otp,verify-otp,password,invitations/preview,invitations/accept}`, `POST /bookings/check-in/scan` (bron kodi/QR) |
+| promo | `RATE_LIMIT_PROMO` | 10/600 | kalit bo'yicha, marshrutlar umumiy | `POST /promotions/validate`; `POST /bookings` va `POST /branches/:id/price-quote` — faqat body'da `promo_code` bo'lsa |
+
+- **Istisno (hech qachon cheklanmaydi, `@NoRateLimit()`):** `/health*`, `POST /webhooks/payments/{payme,click/prepare,click/complete,demo}` (provayder o'zi autentifikatsiya qiladi, qayta urinishlari 429 olmasligi kerak), `POST /telegram/webhook`, WebSocket gateway.
+- **Test:** e2e muhitda limitlar juda yuqori (`test/utils/rate-limit.env.ts`), `test/rate-limit.e2e-spec.ts` ularni pasaytirib 429/Retry-After, user bo'yicha kalit, webhook va health istisnolarini tekshiradi.
+- **Deploy:** API oldidagi proxy loopback'da bo'lmasa `trust proxy` ni moslash kerak — aks holda barcha anonim so'rovlar proxy IP'si ostida bitta hisobga tushadi.
+
+## Xodim parolini tiklash — ierarxiya bo'yicha (2026-10-16)
+**Qaror:** xodim (ega, klub admini, filial admini, operator) parolini unutsa — o'zidan yuqori turgan boshqaruvchi tiklaydi; o'z-o'zini tiklash (email/SMS) hozircha yo'q.
+- `POST /clubs/:clubId/staff/users/:userId/reset-password {password?}` — `staff.reset_password` (SUPER_ADMIN, CLUB_OWNER, CLUB_ADMIN), Idempotency-Key. `password` berilmasa server kuchli vaqtinchalik parol yaratadi (`Xxxx-xxxx-xxxx`, adashtiradigan belgilarsiz); berilsa parol siyosati (min 8, zaif ro'yxat). Javob: `{user_id, temporary_password, generated, must_change_password: true, sessions_revoked}` — parol **faqat shu javobda bir marta**; Idempotency-Key bilan takrorlansa `temporary_password: null` (saqlangan javobda parol yo'q).
+- **Ierarxiya:** maqsadning shu klubdagi eng yuqori roli (ega — `clubs.owner_id` ham) tiklovchinikidan past bo'lishi shart (`SUPER_ADMIN 100 > CLUB_OWNER 50 > CLUB_ADMIN 40 > BRANCH_ADMIN 30 > OPERATOR 20`; custom rol — CLUB 40, BRANCH 30). Super admin → ega/admin/har qanday xodim; ega → klub admini va pastdagilar; klub admini → filial admini/operator (ega va boshqa klub admini — `FORBIDDEN reason=RANK`).
+- **Rad etiladi:** o'zini (`FORBIDDEN reason=SELF_RESET` — profildan `POST /auth/password`), platforma akkaunti (`SUPER_ADMIN`/`SUPPORT`, `type=PLATFORM` — `reason=PLATFORM_ACCOUNT`), boshqa klubda ham xodim/ega bo'lgan akkaunt — faqat platforma tiklaydi (`reason=OTHER_CLUB`, bir klub boshqa klub akkauntini egallab olmasin). Shu klub xodimi emas yoki filial scope'idan tashqarida — `NOT_FOUND`; boshqa klub marshruti — guard `FORBIDDEN`.
+- **Amal (tranzaksiyada):** `password_hash` (argon2id), `users.must_change_password=true`, barcha `refresh_tokens` bekor; Redis `auth:access_cutoff:<userId>` (15 daq+) — undan oldin berilgan access JWT'lar va WebSocket handshake rad, ochiq socketlar uziladi. Audit `staff.password_reset` (`actor_id`, `club_id`, `target_id`, `new_value: {roles, generated, sessions_revoked}` — parolsiz). Foydalanuvchiga `PASSWORD_RESET_BY_ADMIN` bildirishnomasi (IN_APP + bog'langan bo'lsa Telegram; parol yo'q).
+- **Keyingi kirish:** `POST /auth/login` javobida va `user`/`GET /auth/me` da `must_change_password: true`. `POST /auth/password {password}` — vaqtinchalik parolning o'zi rad (`VALIDATION_ERROR reason=SAME_AS_TEMPORARY`), muvaffaqiyatda bayroq tushadi (audit `auth.password_changed_after_reset`). Server bayroq bilan boshqa endpointlarni bloklamaydi — majburiy ekran klientda.
+- `GET /clubs/:clubId/staff` — `user.must_change_password` ("yangi parol kutilmoqda" belgisi).
+- **Admin:** klub/operator panelida `/clubs/:id/staff` — har xodim qatorida "Parolni tiklash" (ruxsat va daraja bo'yicha), oynada avtomatik yoki qo'lda parol, natijada parol bir marta + nusxalash + ogohlantirish. Platforma panelida `/platform/clubs/:id` — "Klub boshqaruvchilari" (ega/adminlar) kartasi. `must_change_password` bo'lsa uchala panelda boshqa har qanday sahifadan oldin "Yangi parol o'rnating" ekrani. Mobile (faqat mijoz) — tegilmagan.
+
+## Huquqiy hujjatlar — oferta, maxfiylik, shartlar (2026-10-15)
+**Qaror:** to'rt hujjat — `offer` (ommaviy oferta, mijoz ↔ platforma), `privacy` (maxfiylik siyosati, O'RQ-547 va lokalizatsiya talabi), `terms` (foydalanish shartlari: bron, bekor qilish, no-show bloki, promo, sharhlar moderatsiyasi, bloklash), `partner` (klublar uchun hamkorlik shartlari: obuna, komissiya, payout, kartaga o'tkazma — mijoz ↔ klub). Har biri uz/ru/en. Qoralama matnlar kodda (`apps/api/src/modules/legal/defaults/*.ts`, `[Kompaniya nomi]`, `[STIR]`, `[Yuridik manzil]`, `[Bank rekvizitlari]`, `[Aloqa email]`, `[Telefon]`, `[Tahrir sanasi]` placeholder'lari bilan) — super admin tahrirlamaguncha shular qaytadi. Migratsiya yo'q: `platform_settings.key = 'legal.<doc>'` → `{version, updated_at, texts: {uz?|ru?|en?: {title, body_markdown}}}` (tahrirlanmagan til — kod qoralamasi).
+- `GET /legal/:doc?lang=uz|ru|en` (ommaviy) → `{doc, lang, title, body_markdown, version, updated_at}`. Noma'lum/bo'sh `lang` — `uz`; noma'lum `doc` — `NOT_FOUND`. Qoralama: `version=1`.
+- `GET /admin/legal/:doc` (`platform.settings.manage`) → `{doc, version, updated_at, texts: {uz,ru,en: {title, body_markdown, is_default}}, limits: {title_max: 200, body_max: 40000}}`.
+- `PUT /admin/legal/:doc {lang, title, body_markdown, expected_version?}` (`platform.settings.manage`) — bitta til saqlanadi, `version` +1 (advisory lock bilan, parallel saqlashda takrorlanmaydi), `expected_version` joriy versiyaga teng bo'lmasa `CONFLICT reason=VERSION_MISMATCH`. Audit `admin.legal.update` (`target_id = legal.<doc>`, eski va yangi matn). `body_markdown` ≤ 40 000 belgi (JSON 100 KB limitiga sig'adi; undan katta so'rov — 413).
+- **Xavfsizlik:** matn Markdown sifatida saqlanadi, klientlar HTML'ni hech qachon bajarmaydi — `@gc/types` `parseMarkdown` (sarlavha, paragraf, ro'yxat, iqtibos, qalin/kursiv/kod, havola) obyekt daraxti beradi, React elementlariga aylantiriladi (`dangerouslySetInnerHTML` yo'q); havola faqat `http(s)`, `mailto:`, `tel:`, `/...`, `#...`.
+- **Web:** `/legal/offer|privacy|terms|partner` — server render (uz matni HTML'da, metadata, 5 daq ISR), til almashtirilsa tanlangan tildagi matn; sitemap'da. Footer (barcha sahifalarda) — hujjat havolalari; login sahifasida rozilik qatori (oferta + maxfiylik), bron vidjeti va to'lov tugmasi ostida (oferta + shartlar + klub qaytarish shartlari).
+- **Admin:** platforma panelida `/platform/legal` (hujjat + til tablari, Markdown muharrir + jonli ko'rinish, versiya/sana, saqlanmagan o'zgarish belgisi). Klub panelida obuna kartasida va klub ochish wizard'ining yuborish qadamida `/partner-terms` havolasi.
+- Mobile — hali yo'q.

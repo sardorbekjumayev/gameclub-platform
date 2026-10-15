@@ -40,18 +40,21 @@ export interface ApiClientOptions {
   language?: () => 'uz' | 'ru' | 'en';
 }
 
+export const isForm = (body: unknown): body is FormData => typeof FormData !== 'undefined' && body instanceof FormData;
+
 export function createApiClient(opts: ApiClientOptions) {
   async function request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
     const token = opts.getToken?.();
     const res = await fetch(`${opts.baseUrl}${path}`, {
       method,
       headers: {
-        'Content-Type': 'application/json',
+        // FormData (fayl yuklash) — Content-Type'ni brauzer o'zi qo'yadi (multipart boundary bilan)
+        ...(isForm(body) ? {} : { 'Content-Type': 'application/json' }),
         'Accept-Language': opts.language?.() ?? 'uz',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isForm(body) ? body : JSON.stringify(body),
     });
     const json = (await res.json()) as ApiResponse<T>;
     if (!json.success) {

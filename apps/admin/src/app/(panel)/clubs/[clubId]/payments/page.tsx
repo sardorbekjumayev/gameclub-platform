@@ -1,6 +1,6 @@
 "use client";
 
-import { CreditCard, Plus, Trash2 } from "lucide-react";
+import { CreditCard, Link2, Plus, Trash2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { ClubHeader } from "@/components/club-tabs";
@@ -61,9 +61,12 @@ export default function ClubPaymentsPage() {
       <LoadState loading={s.loading} error={s.error} onRetry={s.reload} />
       {s.data && (
         <>
-          {!s.data.transfer_card && <Alert tone="info">{t("pay.noCardWarning")}</Alert>}
+          {!s.data.transfer_card && !s.data.transfer_link && <Alert tone="info">{t("pay.noCardWarning")}</Alert>}
           <div className="grid gap-5 xl:grid-cols-2">
-            <CardSection clubId={clubId} data={s.data} onSaved={s.setData} />
+            <div className="space-y-5">
+              <CardSection clubId={clubId} data={s.data} onSaved={s.setData} />
+              <LinkSection clubId={clubId} data={s.data} onSaved={s.setData} />
+            </div>
             <PolicySection clubId={clubId} data={s.data} onSaved={s.setData} />
           </div>
         </>
@@ -177,6 +180,85 @@ function CardSection({ clubId, data, onSaved }: { clubId: string; data: ClubPaym
         <span>
           <span className="font-semibold">{t("pay.payAtClub")}</span>
           <span className="block text-xs text-muted">{t("pay.payAtClubHint")}</span>
+        </span>
+      </label>
+    </Card>
+  );
+}
+
+/**
+ * To'lov havolasi (Click/Payme/bank QR havolasi) — kartaga muqobil: mijoz havolani ochib to'laydi, "To'ladim" bosadi,
+ * operator tasdiqlaydi. Karta va havola birga bo'lsa mijoz tanlaydi. Chek majburiyligi ikkala usulga ham tegishli.
+ */
+function LinkSection({ clubId, data, onSaved }: { clubId: string; data: ClubPaymentSettings; onSaved: (d: ClubPaymentSettings) => void }) {
+  const { t } = useI18n();
+  const { can } = useAuth();
+  const editable = can("settings.update");
+  const { busy, msg, setMsg, save } = useSave(clubId, onSaved);
+  const [url, setUrl] = useState(data.transfer_link?.url ?? "");
+  const [label, setLabel] = useState(data.transfer_link?.label ?? "");
+
+  return (
+    <Card className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Link2 className="h-5 w-5 text-accent" />
+        <div className="font-display text-lg font-bold">{t("pay.link.title")}</div>
+      </div>
+      <p className="text-sm text-muted">{t("pay.link.hint")}</p>
+      {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!/^https:\/\/[^\s]+$/i.test(url.trim())) {
+            setMsg({ tone: "error", text: t("pay.link.invalid") });
+            return;
+          }
+          save("link", { transfer_link: { url: url.trim(), ...(label.trim() ? { label: label.trim() } : {}) } });
+        }}
+      >
+        <div className="grid gap-3 md:grid-cols-[2fr_1fr]">
+          <Field label={t("pay.link.url")} hint={t("pay.link.urlHint")}>
+            <Input type="url" inputMode="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://my.click.uz/..." maxLength={500} disabled={!editable} required />
+          </Field>
+          <Field label={t("pay.link.label")}>
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Click / Payme / Uzum" maxLength={40} disabled={!editable} />
+          </Field>
+        </div>
+        {editable && (
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" loading={busy === "link"}>
+              {t("common.save")}
+            </Button>
+            {data.transfer_link && (
+              <Button
+                type="button"
+                variant="danger"
+                loading={busy === "linkRemove"}
+                onClick={() => {
+                  if (!confirm(t("pay.link.removeConfirm"))) return;
+                  setUrl("");
+                  setLabel("");
+                  save("linkRemove", { transfer_link: null });
+                }}
+              >
+                <Trash2 className="h-4 w-4" /> {t("pay.link.remove")}
+              </Button>
+            )}
+          </div>
+        )}
+      </form>
+      <label className="flex items-center gap-3 rounded-xl bg-surface-2 px-4 py-3 text-sm">
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-[var(--color-accent)]"
+          checked={data.transfer_receipt_required}
+          disabled={!editable || busy === "receipt"}
+          onChange={(e) => save("receipt", { transfer_receipt_required: e.target.checked })}
+        />
+        <span>
+          <span className="font-semibold">{t("pay.receiptRequired")}</span>
+          <span className="block text-xs text-muted">{t("pay.receiptRequiredHint")}</span>
         </span>
       </label>
     </Card>
