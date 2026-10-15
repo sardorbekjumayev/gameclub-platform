@@ -98,6 +98,13 @@ export class PromotionDto {
   @ApiPropertyOptional({ description: '{branch_ids, device_types, weekdays}' }) @IsOptional() @IsObject() applies_to?: Record<string, unknown>;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() is_active?: boolean;
 }
+/** Super admin: promo kodlar ro'yxati — platforma kodlari, klublarniki yoki bitta klubniki. */
+export class AdminPromotionQuery extends PageQuery {
+  @ApiPropertyOptional({ enum: ['PLATFORM', 'CLUBS', 'ALL'], default: 'PLATFORM', description: "PLATFORM — platforma kodlari; CLUBS — klublar qo'shganlari; ALL — hammasi" })
+  @IsOptional() @IsIn(['PLATFORM', 'CLUBS', 'ALL']) scope: 'PLATFORM' | 'CLUBS' | 'ALL' = 'PLATFORM';
+  @ApiPropertyOptional({ description: 'Faqat shu klub kodlari (scope e\'tiborga olinmaydi)' }) @IsOptional() @IsUUID() club_id?: string;
+}
+
 export class UpdatePromotionDto {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) value?: number;
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) max_discount_amount?: number;

@@ -95,6 +95,29 @@ describe('Bookings concurrency (e2e)', () => {
     expect(devices.sort()).toEqual([...catDevices].sort());
   });
 
+  it('one customer, parallel category bookings without Idempotency-Key (double tap, web + app) → one booking, the rest 409 OVERLAP', async () => {
+    const [t] = await customers(1);
+    const start = at(8, 15);
+    const body = { branch_id: C.branchId, start_at: start, duration_minutes: 60, items: [{ category_id: categoryId }], payment_mode: 'AT_CLUB' };
+    const res = await Promise.all([1, 2, 3, 4].map(() => book(t, body)));
+    const ok = res.filter((r) => r.status === 201);
+    expect(ok).toHaveLength(1);
+    for (const r of res.filter((x) => x.status !== 201)) expect({ status: r.status, code: r.body.error.code, reason: r.body.error.details?.reason }).toEqual({ status: 409, code: 'CONFLICT', reason: 'OVERLAP' });
+    const customerId = ok[0].body.data.customer_id as string;
+    expect(await prisma.bookings.count({ where: { customer_id: customerId, status: { not: 'CANCELLED' } } })).toBe(1);
+    // Kategoriyaning boshqa qurilmalari shu vaqtda bo'sh qoldi
+    const busy = await Promise.all(catDevices.map((d) => activeItems(d, start, at(8, 16))));
+    expect(busy.reduce((a, b) => a + b, 0)).toBe(1);
+  });
+
+  it('one customer, parallel bookings on different specific devices at the same time → one booking', async () => {
+    const [t] = await customers(1);
+    const start = at(8, 19);
+    const res = await Promise.all(C.devices.map((d) => book(t, { branch_id: C.branchId, start_at: start, duration_minutes: 60, items: [{ device_id: d }], payment_mode: 'AT_CLUB' })));
+    expect(res.filter((r) => r.status === 201)).toHaveLength(1);
+    for (const r of res.filter((x) => x.status !== 201)) expect({ status: r.status, reason: r.body.error.details?.reason }).toEqual({ status: 409, reason: 'OVERLAP' });
+  });
+
   it('an expired hold is released exactly once under a race; one newcomer wins', async () => {
     const [holder, ...others] = await customers(9);
     const start = at(5, 12);

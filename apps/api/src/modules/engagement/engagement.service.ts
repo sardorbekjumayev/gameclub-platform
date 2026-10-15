@@ -14,7 +14,7 @@ import { SettingsService } from '../settings/settings.service';
 import { assertCan, branchesInClub, can, clubScopeWhere, scopeFilter } from '../rbac/access';
 import { Grant } from '../rbac/rbac.service';
 import {
-  AnnouncementDto, CreateReviewDto, CreateTicketDto, NotificationQuery, PromotionDto, ReviewListQuery, StaffReviewQuery, TicketListQuery, UpdatePromotionDto,
+  AdminPromotionQuery, AnnouncementDto, CreateReviewDto, CreateTicketDto, NotificationQuery, PromotionDto, ReviewListQuery, StaffReviewQuery, TicketListQuery, UpdatePromotionDto,
   SOCIAL_KINDS, type SocialKind, SocialSettingsDto, UpdateReviewDto, UpdateTicketDto,
 } from './engagement.dto';
 
@@ -431,7 +431,20 @@ export class EngagementService {
     return new Paginated(rows, { page: q.page, limit: q.limit, total });
   }
 
+  /** Super admin: barcha promo kodlar (klub kodlari klub nomi bilan). */
+  async adminPromotions(q: AdminPromotionQuery) {
+    const club_id = q.club_id ?? (q.scope === 'PLATFORM' ? null : q.scope === 'CLUBS' ? { not: null } : undefined);
+    const where: Prisma.promotionsWhereInput = { club_id, deleted_at: null, ...(q.q ? { code: { contains: q.q.toUpperCase() } } : {}) };
+    const [rows, total] = await Promise.all([this.prisma.promotions.findMany({ where, orderBy: { created_at: 'desc' }, ...pageArgs(q) }), this.prisma.promotions.count({ where })]);
+    const ids = [...new Set(rows.map((r) => r.club_id).filter((x): x is string => !!x))];
+    const clubs = ids.length ? await this.prisma.clubs.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : [];
+    const byId = new Map(clubs.map((c) => [c.id, c]));
+    return new Paginated(rows.map((r) => ({ ...r, club: r.club_id ? (byId.get(r.club_id) ?? null) : null })), { page: q.page, limit: q.limit, total });
+  }
+
   async createPromotion(clubId: string | null, dto: PromotionDto, actor: Actor) {
+    // Super admin istalgan klub uchun qo'sha oladi — klub mavjudligi tekshiriladi (aks holda yetim promo)
+    if (clubId && !(await this.prisma.clubs.findFirst({ where: { id: clubId, deleted_at: null }, select: { id: true } }))) throw new AppException('NOT_FOUND', 'Club not found');
     if (dto.type === 'PERCENT' && dto.value > 100) throw new AppException('VALIDATION_ERROR', 'Percent must be 1-100', { field: 'value' });
     if (await this.prisma.promotions.findUnique({ where: { code: dto.code } })) throw new AppException('CONFLICT', 'Promo code already exists');
     const p = await this.prisma.promotions.create({

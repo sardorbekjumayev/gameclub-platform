@@ -326,6 +326,8 @@ GET  /branches/:id/live          [sessions.view] live board snapshot (qurilmalar
 
 ### 6.12 promotions 🆕
 `GET/POST/PATCH/DELETE /clubs/:clubId/promotions [promotions.*]`, `POST /promotions/validate {code, branch_id, amount}` [C]. Qoidalar: amal qilish muddati, limitlar (umumiy/foydalanuvchi), min summa, max chegirma, filial/qurilma turi/hafta kuni filtri, `funded_by` (klub yoki platforma — moliya hisobotida ajratiladi). Bir bronga bitta promo. Hold paytida "zaxiralanadi", bron bekor bo'lsa qaytariladi.
+- **Kim qo'shadi:** klub egasi/admini (`promotions.manage`) — `POST /clubs/:clubId/promotions` (klub hisobidan, faqat shu klubda). Super admin: platforma kodi — `POST /admin/promotions` (`funded_by=PLATFORM`, barcha klublarda); klub nomidan — o'sha `POST /clubs/:clubId/promotions` (klub hisobidan, klub egasi ko'radi/tahrirlaydi; klub yo'q bo'lsa 404; audit `promotion.create` `club_id` bilan).
+- `GET /admin/promotions?scope=PLATFORM|CLUBS|ALL&club_id=` [`platform.settings.manage`] — standart `PLATFORM`; klub kodlari `club: {id, name}` bilan. Admin UI: klub paneli `/clubs/:id/promotions`, platforma paneli `/platform/promotions`.
 
 ### 6.13 reviews
 ```http

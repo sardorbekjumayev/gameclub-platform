@@ -7,7 +7,7 @@ import { PageQuery } from '../../common/dto/pagination.dto';
 import { type Actor } from '../clubs/clubs.service';
 import { RbacService, type Grant } from '../rbac/rbac.service';
 import {
-  AnnouncementDto, CreateReviewDto, CreateTicketDto, DeviceTokenDto, ModerateReviewDto, NotificationPrefsDto, NotificationQuery, PromotionDto, ReplyDto, ReviewListQuery,
+  AdminPromotionQuery, AnnouncementDto, CreateReviewDto, CreateTicketDto, DeviceTokenDto, ModerateReviewDto, NotificationPrefsDto, NotificationQuery, PromotionDto, ReplyDto, ReviewListQuery,
   SocialSettingsDto, StaffReviewQuery, TicketListQuery, TicketMessageDto, UpdatePromotionDto, UpdateReviewDto, UpdateTicketDto, ValidatePromoDto,
 } from './engagement.dto';
 import { EngagementService } from './engagement.service';
@@ -190,8 +190,9 @@ export class EngagementController {
     return this.svc.setSocial(dto, a);
   }
   @Get('admin/promotions') @RequirePermission('platform.settings.manage')
-  platformPromotions(@Query() q: PageQuery) {
-    return this.svc.promotions(null, q);
+  @ApiOperation({ summary: "Super admin: platforma va klublar promo kodlari (scope=PLATFORM|CLUBS|ALL, club_id)" })
+  platformPromotions(@Query() q: AdminPromotionQuery) {
+    return this.svc.adminPromotions(q);
   }
   @Post('admin/promotions') @RequirePermission('platform.settings.manage')
   createPlatformPromotion(@Body() dto: PromotionDto, @CurrentActor() a: Actor) {

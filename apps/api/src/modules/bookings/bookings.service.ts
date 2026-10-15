@@ -28,6 +28,13 @@ export const LIVE_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'ACT
 const EXCLUSION = /booking_items_no_overlap|23P01|conflicting key value violates exclusion constraint/;
 /** Kesishuvchi oraliqlarni parallel yozishda exclusion constraint deadlock berishi mumkin — bu ham konflikt. */
 const DEADLOCK = /40P01|deadlock detected/;
+
+/** Shu Idempotency-Key bilan bron allaqachon yaratilgan — tranzaksiya bekor qilinib, mavjud bron qaytariladi. */
+class IdempotentReplay extends Error {
+  constructor(readonly bookingId: string) {
+    super('idempotent replay');
+  }
+}
 const SESSION_BUSY = ['WAITING', 'ACTIVE', 'PAUSED'];
 
 /** Jonli sessiya `start` dan boshlanadigan oraliqni band qiladimi: pauza yoki tugash vaqtisiz — doim; aks holda tugashigacha. busy() va slots() uchun yagona qoida. */
@@ -307,11 +314,8 @@ export class BookingsService {
       if (user.booking_blocked_until && user.booking_blocked_until > new Date()) {
         throw new AppException('CUSTOMER_BOOKING_BLOCKED', 'Booking is temporarily restricted', { until: user.booking_blocked_until.toISOString() });
       }
-      const holds = await this.prisma.bookings.count({ where: { customer_id: customerId, status: 'PENDING_PAYMENT', hold_expires_at: { gt: new Date() } } });
-      if (holds >= ((await this.settings.get<number>('booking.max_parallel_holds')) ?? 2)) throw new AppException('CONFLICT', 'Too many unpaid bookings', { reason: 'MAX_HOLDS' });
-      const overlap = await this.prisma.bookings.count({ where: { customer_id: customerId, status: { in: LIVE_STATUSES }, start_at: { lt: end }, end_at: { gt: start }, NOT: { status: 'PENDING_PAYMENT', hold_expires_at: { lte: new Date() } } } });
-      if (overlap) throw new AppException('CONFLICT', 'You already have a booking at this time', { reason: 'OVERLAP' });
     }
+    const maxHolds = (await this.settings.get<number>('booking.max_parallel_holds')) ?? 2;
     for (const it of dto.items) {
       if (!it.device_id && !it.category_id) throw new AppException('VALIDATION_ERROR', 'Each item needs device_id or category_id', { field: 'items' });
       if (it.device_id && !ctx.settings.allow_specific_device && !staff) throw new AppException('VALIDATION_ERROR', 'This branch books by category only', { field: 'items' });
@@ -327,6 +331,19 @@ export class BookingsService {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const booking = await this.prisma.$transaction(async (tx) => {
+          if (customerId) {
+            // Bir mijozning parallel so'rovlari (qo'sh bosish, web + mobile) navbat bilan: aks holda ikkalasi ham
+            // "shu vaqtda broningiz yo'q" deb ko'rib, kategoriya bronida ikki xil qurilmaga bir vaqtda ikkita bron ochiladi.
+            await tx.$queryRaw`SELECT id FROM users WHERE id = ${customerId}::uuid FOR UPDATE`;
+            if (idempotencyKey) {
+              const replay = await tx.bookings.findFirst({ where: { customer_id: customerId, idempotency_key: idempotencyKey }, select: { id: true } });
+              if (replay) throw new IdempotentReplay(replay.id);
+            }
+            const holds = await tx.bookings.count({ where: { customer_id: customerId, status: 'PENDING_PAYMENT', hold_expires_at: { gt: new Date() } } });
+            if (holds >= maxHolds) throw new AppException('CONFLICT', 'Too many unpaid bookings', { reason: 'MAX_HOLDS' });
+            const overlap = await tx.bookings.count({ where: { customer_id: customerId, status: { in: LIVE_STATUSES }, start_at: { lt: end }, end_at: { gt: start }, NOT: { status: 'PENDING_PAYMENT', hold_expires_at: { lte: new Date() } } } });
+            if (overlap) throw new AppException('CONFLICT', 'You already have a booking at this time', { reason: 'OVERLAP' });
+          }
           const devices = await tx.devices.findMany({ where: { branch_id: ctx.branch.id, deleted_at: null, operational_status: 'ACTIVE' }, orderBy: [{ position_order: 'asc' }, { name: 'asc' }] });
           await this.expireHolds(tx, { device_ids: devices.map((d) => d.id) });
           const { reserved, occupied } = await this.busy(tx, devices.map((d) => d.id), start, blockedEnd);
@@ -397,6 +414,7 @@ export class BookingsService {
         this.realtime.branch(ctx.branch.id, 'booking.created', { booking_id: booking.id, status: booking.status });
         return this.detail(booking.id);
       } catch (e) {
+        if (e instanceof IdempotentReplay) return this.detail(e.bookingId);
         if (e instanceof AppException) {
           if (e.code === 'BOOKING_SLOT_TAKEN' && dto.items.some((i) => !i.device_id) && attempt < 2) continue;
           throw e;
