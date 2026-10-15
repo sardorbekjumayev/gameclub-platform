@@ -23,12 +23,15 @@ export interface Me {
   language: 'uz' | 'ru' | 'en';
   status: string;
   has_password: boolean;
+  /** Admin parolni tiklagan — boshqa amallardan oldin yangi parol o'rnatilishi shart. */
+  must_change_password: boolean;
   roles: MeRole[];
   permissions: string[];
 }
 
 export interface LoginResult extends AuthTokens {
   is_new: boolean;
+  must_change_password: boolean;
   user: Me;
 }
 

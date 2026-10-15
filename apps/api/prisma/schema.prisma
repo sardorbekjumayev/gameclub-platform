@@ -20,6 +20,7 @@ model users {
   email                 String?   @unique @db.Citext
   email_verified_at     DateTime? @db.Timestamptz
   password_hash         String?
+  must_change_password  Boolean   @default(false) // admin parolni tiklagan: keyingi kirishda yangi parol shart
   first_name            String?
   last_name             String?
   avatar_file_id        String?   @db.Uuid

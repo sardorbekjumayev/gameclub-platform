@@ -9,6 +9,7 @@ import { Alert, Button, Card, Heading, Input, Stat } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session, useAuth } from "@/lib/session";
 import { AssignPlan } from "@/components/assign-plan";
+import { ClubManagersCard } from "@/components/staff-password";
 import { SubscriptionCard } from "@/components/subscription-card";
 import type { Club, ClubSubscription } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
@@ -134,6 +135,8 @@ export default function AdminClubPage() {
               </ul>
             </Card>
           </div>
+
+          <ClubManagersCard clubId={c.id} />
 
           <Card className="space-y-3">
             <div className="font-display text-lg font-bold">{t("club.documents")}</div>

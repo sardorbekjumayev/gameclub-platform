@@ -190,6 +190,10 @@ export class InviteStaffDto {
   @ApiProperty({ enum: STAFF_ROLES }) @IsIn(STAFF_ROLES) role!: string;
   @ApiPropertyOptional({ description: 'BRANCH_ADMIN/OPERATOR uchun majburiy' }) @IsOptional() @IsUUID() branch_id?: string;
 }
+export class ResetStaffPasswordDto {
+  @ApiPropertyOptional({ description: 'Berilmasa server kuchli vaqtinchalik parol yaratadi. Javobda faqat bir marta qaytadi.', minLength: 8 })
+  @IsOptional() @IsString() @MinLength(8) @MaxLength(128) password?: string;
+}
 export class InvitationTokenDto {
   @ApiProperty() @IsString() @MinLength(20) @MaxLength(200) token!: string;
 }

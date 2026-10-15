@@ -17,7 +17,7 @@ export const PERMISSIONS = [
   'payments.view', 'payments.create', 'payments.refund',
   'shifts.open', 'shifts.close', 'shifts.view_all',
   'reports.view', 'reports.export',
-  'staff.view', 'staff.create', 'staff.update', 'staff.delete', 'roles.manage',
+  'staff.view', 'staff.create', 'staff.update', 'staff.delete', 'staff.reset_password', 'roles.manage',
   'reviews.view', 'reviews.reply',
   'notifications.send', 'announcements.manage',
   'settings.view', 'settings.update',
@@ -40,7 +40,7 @@ const BRANCH_ADMIN: Permission[] = [
   'reports.view', 'staff.view', 'promotions.view', 'branches.view', 'clubs.view',
 ];
 const CLUB_ADMIN: Permission[] = [
-  ...BRANCH_ADMIN, 'branches.update', 'staff.create', 'staff.update', 'staff.delete', 'reports.export',
+  ...BRANCH_ADMIN, 'branches.update', 'staff.create', 'staff.update', 'staff.delete', 'staff.reset_password', 'reports.export',
 ];
 
 export const SYSTEM_ROLES: { code: string; name: string; scope_type: 'PLATFORM' | 'CLUB' | 'BRANCH'; permissions: readonly Permission[] }[] = [

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CLUB_TABS } from "@/components/club-tabs";
+import { ForcePasswordChange } from "@/components/force-password";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { useSupportAwaiting } from "@/components/support";
 import { WrongPanel } from "@/components/wrong-panel";
@@ -68,6 +69,9 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
       </div>
     );
   }
+
+  // Admin parolni tiklagan — har qanday sahifadan oldin yangi parol (uchala panel)
+  if (me.must_change_password) return <ForcePasswordChange />;
 
   // Klubi yo'q mijoz — klub panelida faqat klub ochish wizard'i
   const isCustomerOnly = me.roles.every((r) => r.role === "CUSTOMER");

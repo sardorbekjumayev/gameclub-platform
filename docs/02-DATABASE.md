@@ -50,7 +50,7 @@
 Ustun ro'yxatida `*` = NOT NULL. Standart ustunlar (`id`, `created_at`, `updated_at`) qayta yozilmaydi.
 
 ### 3.1 Identity va RBAC
-**users**: `type*`, `phone* (unique, E.164)`, `phone_verified_at`, `email citext (unique, nullable)`, `email_verified_at`, `password_hash`, `first_name`, `last_name`, `avatar_file_id`, `language* default 'uz'`, `status*`, `last_login_at`, `no_show_count int default 0`, `booking_blocked_until`, `totp_secret_enc`, `totp_enabled bool`, `deleted_at`.
+**users**: `type*`, `phone* (unique, E.164)`, `phone_verified_at`, `email citext (unique, nullable)`, `email_verified_at`, `password_hash`, `must_change_password bool default false` 🆕, `first_name`, `last_name`, `avatar_file_id`, `language* default 'uz'`, `status*`, `last_login_at`, `no_show_count int default 0`, `booking_blocked_until`, `totp_secret_enc`, `totp_enabled bool`, `deleted_at`.
 **roles**: `code* unique`, `name`, `scope_type* (PLATFORM|CLUB|BRANCH)`, `is_system bool`.
 **permissions**: `code* unique` (masalan `devices.update`), `description`.
 **role_permissions**: `role_id*`, `permission_id*` — PK (role_id, permission_id).
@@ -230,3 +230,6 @@ Xona sxemasi o'lchami (default 10×5). Qurilma joyi `devices.layout {x,y}` — s
 ### rental_items, rentals, payments.rental_id (migratsiya `20261002150000_console_rentals`)
 **rental_items** (uyga beriladigan konsol): `club_id*`, `branch_id*`, `name*`, `type*`, `description`, `image_url`, `includes text[]`, `games text[]`, `quantity* ≥1`, `price_per_hour`, `price_per_day` (tiyin; kamida bittasi NOT NULL), `min_hours`, `max_days`, `deposit_amount` (dona uchun), `delivery_available`, `delivery_fee`, `requirements`, `status (ACTIVE|INACTIVE)`, `position`, `deleted_at`.
 **rentals**: `code* unique (RN-XXXXXX)`, `item_id*`, `club_id*`, `branch_id*`, `customer_id*`, `contact_phone`, `quantity`, `rate_unit*`, `units*`, `start_at*`, `end_at*`, `unit_price`, `subtotal_amount`, `delivery_fee_amount`, `late_fee_amount`, `total_amount` (CHECK = subtotal + delivery + late), `deposit_amount`, `deposit_status`, `paid_amount`, `payment_status`, `status*`, `fulfillment`, `delivery_address`, `notes`, `item_snapshot jsonb*`, `idempotency_key` (unique customer_id+key), `confirmed_*`, `handed_over_*`, `returned_*`, `cancelled_*`, `cancel_reason`. Indekslar: (item_id, start_at), (branch_id, status, start_at), (customer_id, created_at desc). Dona soni bo'yicha band qilish exclusion constraint bilan emas — `rental_items` qatorini `FOR UPDATE` qulflab, tranzaksiyada hisoblanadi.
+
+### users.must_change_password + permission `staff.reset_password` (migratsiya `20261016120000_staff_password_reset`)
+Admin xodim parolini tiklaganda `true`; foydalanuvchi `POST /auth/password` bilan yangi parol o'rnatgach `false`. Migratsiya permission'ni yaratadi va `SUPER_ADMIN`, `CLUB_OWNER`, `CLUB_ADMIN` rollariga biriktiradi (`catalog.ts` bilan mos).

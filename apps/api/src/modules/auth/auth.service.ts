@@ -7,11 +7,11 @@ import { PrismaService } from '../../database/prisma.service';
 import { REDIS } from '../../infra/redis/redis.module';
 import { AuditService } from '../audit/audit.service';
 import { RbacService } from '../rbac/rbac.service';
+import { assertStrongPassword, hashPassword } from './password';
 import { ClientInfo, TokenService } from './token.service';
 
 const LOGIN_LIMIT = 10;
 const LOGIN_WINDOW_S = 600;
-const WEAK_PASSWORDS = new Set(['12345678', 'password', 'qwerty123', '11111111', 'password1', '123456789', 'iloveyou']);
 
 type ReqMeta = ClientInfo & { user_agent: string | null; request_id: string | null };
 
@@ -67,13 +67,17 @@ export class AuthService {
   }
 
   async setPassword(userId: string, password: string) {
-    if (WEAK_PASSWORDS.has(password.toLowerCase())) {
-      throw new AppException('VALIDATION_ERROR', 'Password is too weak');
+    assertStrongPassword(password);
+    const user = await this.prisma.users.findUniqueOrThrow({ where: { id: userId }, select: { password_hash: true, must_change_password: true } });
+    // Admin tiklagan vaqtinchalik parolni o'zini qayta o'rnatib bo'lmaydi
+    if (user.must_change_password && user.password_hash && (await argon2.verify(user.password_hash, password))) {
+      throw new AppException('VALIDATION_ERROR', 'New password must differ from the temporary one', { field: 'password', reason: 'SAME_AS_TEMPORARY' });
     }
     await this.prisma.users.update({
       where: { id: userId },
-      data: { password_hash: await argon2.hash(password, { type: argon2.argon2id }) },
+      data: { password_hash: await hashPassword(password), must_change_password: false },
     });
+    if (user.must_change_password) await this.audit.log({ actor_id: userId, action: 'auth.password_changed_after_reset', target_type: 'user', target_id: userId });
   }
 
   private assertActive(user: { status: string; deleted_at: Date | null }) {
@@ -90,7 +94,8 @@ export class AuthService {
   private async finishLogin(user: { id: string; type: string }, meta: ReqMeta, isNew: boolean) {
     await this.prisma.users.update({ where: { id: user.id }, data: { last_login_at: new Date() } });
     const pair = await this.tokens.issuePair(user, meta);
-    return { ...pair, is_new: isNew, user: await this.me(user.id) };
+    const me = await this.me(user.id);
+    return { ...pair, is_new: isNew, must_change_password: me.must_change_password, user: me };
   }
 
   async me(userId: string) {
@@ -99,6 +104,7 @@ export class AuthService {
       select: {
         id: true, type: true, phone: true, email: true, first_name: true, last_name: true,
         language: true, status: true, avatar_file_id: true, totp_enabled: true, created_at: true, password_hash: true,
+        must_change_password: true,
       },
     });
     const { password_hash, ...safe } = user;

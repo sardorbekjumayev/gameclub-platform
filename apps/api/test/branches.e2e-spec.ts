@@ -340,7 +340,8 @@ describe('Branches, rooms, settings, staff, customers (e2e)', () => {
       const row = list.body.data.find((x: { id: string }) => x.id === assignment);
       expect(row).toMatchObject({ role: 'OPERATOR', branch_id: A.branchId, branch_name: 'Asosiy' });
       const json = JSON.stringify(list.body.data);
-      expect(json).not.toMatch(/password|token_hash|refresh/i);
+      // `must_change_password` (bool) — sir emas; parol/hash/token qiymatlari bo'lmasligi kerak
+      expect(json).not.toMatch(/password_hash|"password"|temporary_password|token_hash|refresh/i);
       // Filial admini faqat o'z filiali xodimlarini ko'radi
       const ba = await h.http.get(api(`/clubs/${A.clubId}/staff`)).set(bearer(badminA1)).expect(200);
       expect(ba.body.data.every((x: { branch_id: string }) => x.branch_id === A.branchId)).toBe(true);

@@ -2,7 +2,7 @@
 
 import { formatMoney } from "@gc/types";
 import { useState } from "react";
-import { Alert, Button, Field, Input, Select, cx } from "@/components/ui";
+import { Alert, Button, Field, Input, Modal, Select, cx } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session } from "@/lib/session";
 import type { LiveDevice, TariffPackage } from "@/lib/types";
@@ -20,21 +20,8 @@ const DURATIONS = [30, 60, 90, 120, 180, 240, 300, 360] as const;
 /** Xato kodi SHIFT_REQUIRED bo'lsa — kassa smenasini ochishga yo'naltirish. */
 export const isShiftRequired = (e: unknown) => (e as { details?: { reason?: string } })?.details?.reason === "SHIFT_REQUIRED";
 
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4" onClick={onClose}>
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-[20px] bg-bg p-5 shadow-2xl sm:rounded-[20px]" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="font-display text-xl font-bold">{title}</h2>
-          <button className="rounded-lg px-2 text-2xl leading-none text-muted hover:text-fg" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
+/** Umumiy modal `ui.tsx` ga ko'chirildi — eski importlar ishlashi uchun qayta eksport. */
+export { Modal } from "@/components/ui";
 
 function PayPicker({ value, onChange, allowLater = true }: { value: Pay; onChange: (p: Pay) => void; allowLater?: boolean }) {
   const { t } = useI18n();

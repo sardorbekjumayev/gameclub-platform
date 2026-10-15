@@ -60,7 +60,7 @@ export type StaffRow = {
   branch_id: string | null;
   branch_name: string | null;
   created_at: string;
-  user: { id: string; phone: string | null; email: string | null; first_name: string | null; last_name: string | null; status: string; last_login_at: string | null };
+  user: { id: string; phone: string | null; email: string | null; first_name: string | null; last_name: string | null; status: string; last_login_at: string | null; must_change_password?: boolean };
 };
 
 export type Invitation = {

@@ -1,4 +1,5 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor, SetMetadata, UseInterceptors, applyDecorators } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { ApiHeader } from '@nestjs/swagger';
 import { Prisma } from '@prisma/client';
 import { catchError, concatMap, from, Observable, of, switchMap, throwError } from 'rxjs';
@@ -16,7 +17,10 @@ const TTL_MS = 48 * 3600 * 1000;
  */
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reflector: Reflector,
+  ) {}
 
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = ctx.switchToHttp().getRequest();
@@ -24,6 +28,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
     if (!key || !req.user) return next.handle();
     const route = `${req.method} ${req.route?.path ?? req.path}:${JSON.stringify(req.params ?? {})}`;
     const hash = sha256(JSON.stringify(req.body ?? {}));
+    const redact = this.reflector.get<string[] | undefined>(IDEMPOTENT_REDACT, ctx.getHandler()) ?? [];
     return from(this.prisma.idempotency_keys.findUnique({ where: { key_user_id_route: { key, user_id: req.user.id, route } } })).pipe(
       switchMap((found) => {
         if (found && found.expires_at > new Date()) {
@@ -46,7 +51,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
               concatMap((body) =>
                 from(
                   this.prisma.idempotency_keys
-                    .update({ where: { key_user_id_route: { key, user_id: req.user.id, route } }, data: { response_status: 200, response_body: serialize(body) as Prisma.InputJsonValue } })
+                    .update({ where: { key_user_id_route: { key, user_id: req.user.id, route } }, data: { response_status: 200, response_body: redacted(serialize(body), redact) as Prisma.InputJsonValue } })
                     .catch(() => undefined),
                 ).pipe(switchMap(() => of(body))),
               ),
@@ -64,10 +69,18 @@ export class IdempotencyInterceptor implements NestInterceptor {
   }
 }
 
+/** Saqlanadigan javobdan sezgir maydonlar (masalan vaqtinchalik parol) olib tashlanadi — takrorda `null` qaytadi. */
+function redacted(body: unknown, fields: string[]) {
+  if (!fields.length || !body || typeof body !== 'object') return body;
+  return { ...(body as Record<string, unknown>), ...Object.fromEntries(fields.map((f) => [f, null])) };
+}
+
 export const IDEMPOTENT = 'idempotent';
-export const Idempotent = () =>
+export const IDEMPOTENT_REDACT = 'idempotent_redact';
+export const Idempotent = (opts: { redact?: string[] } = {}) =>
   applyDecorators(
     SetMetadata(IDEMPOTENT, true),
+    SetMetadata(IDEMPOTENT_REDACT, opts.redact ?? []),
     UseInterceptors(IdempotencyInterceptor),
     ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID; takroriy so\'rovdan himoya (48 soat)' }),
   );

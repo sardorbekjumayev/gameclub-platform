@@ -49,4 +49,13 @@ export class RealtimeService {
   user(userId: string | null | undefined, event: LiveEvent, data: Record<string, unknown> = {}) {
     if (userId) this.emit(`user:${userId}`, event, data);
   }
+
+  /** Foydalanuvchining barcha ochiq socketlarini uzish (parol tiklanganda — sessiyalar bekor). */
+  disconnectUser(userId: string) {
+    try {
+      this.server?.in(`user:${userId}`).disconnectSockets(true);
+    } catch (e) {
+      this.logger.warn(`disconnect failed: ${(e as Error).message}`);
+    }
+  }
 }
