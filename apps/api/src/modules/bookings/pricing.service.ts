@@ -67,8 +67,8 @@ export class PricingService {
   }
 
   /** Promo tekshiruvi (docs/01-API.md §6.12). Xato bo'lsa PROMO_INVALID. */
-  async promo(code: string, ctx: { club_id: string; branch_id: string; user_id: string | null; subtotal: bigint; device_types: string[]; start: Date; weekday: number }): Promise<PromoResult> {
-    const p = await this.prisma.promotions.findFirst({ where: { code: code.trim().toUpperCase(), deleted_at: null, is_active: true } });
+  async promo(code: string, ctx: { club_id: string; branch_id: string; user_id: string | null; subtotal: bigint; device_types: string[]; start: Date; weekday: number }, db: Prisma.TransactionClient = this.prisma): Promise<PromoResult> {
+    const p = await db.promotions.findFirst({ where: { code: code.trim().toUpperCase(), deleted_at: null, is_active: true } });
     const invalid = (reason: string) => new AppException('PROMO_INVALID', 'Promo code is not valid', { reason });
     if (!p) throw invalid('NOT_FOUND');
     if (p.club_id && p.club_id !== ctx.club_id) throw invalid('OTHER_CLUB');
@@ -81,7 +81,7 @@ export class PricingService {
     if (applies.device_types?.length && !ctx.device_types.every((t) => applies.device_types!.includes(t))) throw invalid('DEVICE_TYPE');
     if (applies.weekdays?.length && !applies.weekdays.includes(ctx.weekday)) throw invalid('WEEKDAY');
     if (p.per_user_limit != null && ctx.user_id) {
-      const used = await this.prisma.promotion_redemptions.count({ where: { promotion_id: p.id, user_id: ctx.user_id } });
+      const used = await db.promotion_redemptions.count({ where: { promotion_id: p.id, user_id: ctx.user_id } });
       if (used >= p.per_user_limit) throw invalid('USER_LIMIT');
     }
     return { promotion_id: p.id, code: p.code, discount: promoDiscount(p, ctx.subtotal), funded_by: p.funded_by };
