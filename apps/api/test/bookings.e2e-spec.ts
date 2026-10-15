@@ -383,13 +383,14 @@ describe('Bookings (e2e)', () => {
       await confirmed(c2.token, A.devices[0], at(6, 12));
     });
 
-    it('one customer: no overlapping bookings, at most N unpaid holds', async () => {
+    it('one customer: several bookings at the same time are allowed (friends), at most N unpaid holds', async () => {
       const c = await customer();
       await confirmed(c.token, A.devices[0], at(7, 10));
-      const ov = await book(c.token, { branch_id: A.branchId, start_at: at(7, 10, 30), duration_minutes: 60, items: [{ device_id: A.devices[1] }] }).expect(409);
-      expect(ov.body.error).toMatchObject({ code: 'CONFLICT', details: { reason: 'OVERLAP' } });
-      // Boshqa klubda ham bir vaqtda bo'lmaydi
-      await book(c.token, { branch_id: B.branchId, start_at: at(7, 10), duration_minutes: 60, items: [{ device_id: B.devices[0] }] }).expect(409);
+      // Do'sti uchun shu vaqtga boshqa PC — mumkin
+      const friend = await book(c.token, { branch_id: A.branchId, start_at: at(7, 10, 30), duration_minutes: 60, items: [{ device_id: A.devices[1] }], payment_mode: 'AT_CLUB' }).expect(201);
+      await h.http.post(api(`/bookings/${friend.body.data.id}/cancel`)).set(bearer(c.token)).send({}).expect(201);
+      // Bitta PC'ni o'zi ikki marta band qila olmaydi
+      await book(c.token, { branch_id: A.branchId, start_at: at(7, 10), duration_minutes: 60, items: [{ device_id: A.devices[0] }] }).expect(409);
 
       const limit = (await h.get<SettingsService>(SettingsService).get<number>('booking.max_parallel_holds')) ?? 2;
       for (let i = 0; i < limit; i++) {
@@ -775,18 +776,12 @@ describe('Bookings (e2e)', () => {
       await h.http.post(api(`/bookings/${b.id}/reschedule`)).set(bearer(c.token)).send({ start_at: at(13, 22) }).expect(409);
     });
 
-    it('cannot move a booking onto a time when the same customer already has another booking', async () => {
+    it('a booking can be moved onto a time when the same customer has another booking on a different device', async () => {
       const c = await customer();
       await confirmed(c.token, A.devices[0], at(13, 16));
       const b = await confirmed(c.token, A.devices[1], at(13, 18));
-      const r = await h.http.post(api(`/bookings/${b.id}/reschedule`)).set(bearer(c.token)).send({ start_at: at(13, 16, 30) }).expect(409);
-      expect(r.body.error.details).toEqual({ reason: 'OVERLAP' });
-      const d = await h.http.get(api(`/bookings/${b.id}`)).set(bearer(c.token)).expect(200);
-      expect(d.body.data.start_at).toBe(at(13, 18));
-      // Xodim ko'chirsa ham mijozning boshqa broni bilan ustma-ust tushmaydi
-      await h.http.post(api(`/bookings/${b.id}/reschedule`)).set(bearer(A.owner)).send({ start_at: at(13, 16, 30) }).expect(409);
-      // O'z oralig'iga yaqin siljitish — mumkin
-      await h.http.post(api(`/bookings/${b.id}/reschedule`)).set(bearer(c.token)).send({ start_at: at(13, 17) }).expect(201);
+      const r = await h.http.post(api(`/bookings/${b.id}/reschedule`)).set(bearer(c.token)).send({ start_at: at(13, 16, 30) }).expect(201);
+      expect(r.body.data.start_at).toBe(at(13, 16, 30));
     });
 
     it('an expired hold cannot be rescheduled', async () => {

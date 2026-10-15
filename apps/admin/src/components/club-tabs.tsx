@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Building2, CreditCard, Gamepad2, LayoutGrid, type LucideIcon, MapPin, Monitor, Star, Tags, Users } from "lucide-react";
+import { BarChart3, Building2, CreditCard, Gamepad2, LayoutGrid, type LucideIcon, MapPin, Monitor, Star, Tags, TicketPercent, Users } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { StatusBadge } from "@/components/status";
 import { Heading, cx } from "@/components/ui";
@@ -14,6 +14,7 @@ export const CLUB_TABS: { seg: string; label: MessageKey; permission: string; ic
   { seg: "/layout", label: "club.tab.layout", permission: "devices.view", icon: LayoutGrid },
   { seg: "/tariffs", label: "club.tab.tariffs", permission: "tariffs.view", icon: Tags },
   { seg: "/rentals", label: "club.tab.rentals", permission: "rentals.view", icon: Gamepad2 },
+  { seg: "/promotions", label: "club.tab.promotions", permission: "promotions.view", icon: TicketPercent },
   { seg: "/payments", label: "club.tab.payments", permission: "settings.view", icon: CreditCard },
   { seg: "/staff", label: "club.tab.staff", permission: "staff.view", icon: Users },
   { seg: "/analytics", label: "club.tab.analytics", permission: "reports.view", icon: BarChart3 },

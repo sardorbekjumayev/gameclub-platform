@@ -256,7 +256,7 @@ PENDING_PAYMENT ──to'lov──► CONFIRMED ──check-in──► CHECKED_
    EXPIRED                    CANCELLED                              NO_SHOW
 ```
 Qoidalar:
-- Bir vaqtning o'zida `CUSTOMER_BOOKING_BLOCKED` bo'lgan (no-show limiti) mijoz bron qila olmaydi; bir mijozning bir xil vaqtga ikki bronini cheklash 🆕; bitta mijozning parallel `PENDING_PAYMENT` holdlari max 2.
+- Bir vaqtning o'zida `CUSTOMER_BOOKING_BLOCKED` bo'lgan (no-show limiti) mijoz bron qila olmaydi; bir mijoz bir vaqtga bir nechta bron qila oladi (masalan, do'stlari uchun boshqa PC — bitta qurilmani DB exclusion constraint himoya qiladi); bitta mijozning parallel `PENDING_PAYMENT` holdlari max 2.
 - **Cancel:** faqat `PENDING_PAYMENT|CONFIRMED` (va operator uchun `CHECKED_IN`). Refund foizi `cancellation_policy` bo'yicha (§6.10). Cancel tranzaksiyada: booking → CANCELLED, items.active=false, refund yaratiladi, event chiqadi.
 - **Reschedule:** yangi oraliq uchun availability qayta tekshiriladi va bir tranzaksiyada eski item bo'shatilib yangisi band qilinadi (constraint himoya qiladi). Narx farqi: yuqori bo'lsa qo'shimcha to'lov (`amount_due`), past bo'lsa farq refund yoki kreditlanadi (klub sozlamasi). Cheklov: boshlanishiga X daqiqa qolganda ko'chirib bo'lmaydi; max 2 marta.
 - **Check-in oynasi:** `start - early_checkin_minutes` … `start + grace_minutes` (default 15/15). Undan tashqarida `BOOKING_CHECKIN_WINDOW_CLOSED` (operator override uchun `force=true` + permission).
@@ -326,6 +326,8 @@ GET  /branches/:id/live          [sessions.view] live board snapshot (qurilmalar
 
 ### 6.12 promotions 🆕
 `GET/POST/PATCH/DELETE /clubs/:clubId/promotions [promotions.*]`, `POST /promotions/validate {code, branch_id, amount}` [C]. Qoidalar: amal qilish muddati, limitlar (umumiy/foydalanuvchi), min summa, max chegirma, filial/qurilma turi/hafta kuni filtri, `funded_by` (klub yoki platforma — moliya hisobotida ajratiladi). Bir bronga bitta promo. Hold paytida "zaxiralanadi", bron bekor bo'lsa qaytariladi.
+- **Kim qo'shadi:** klub egasi/admini (`promotions.manage`) — `POST /clubs/:clubId/promotions` (klub hisobidan, faqat shu klubda). Super admin: platforma kodi — `POST /admin/promotions` (`funded_by=PLATFORM`, barcha klublarda); klub nomidan — o'sha `POST /clubs/:clubId/promotions` (klub hisobidan, klub egasi ko'radi/tahrirlaydi; klub yo'q bo'lsa 404; audit `promotion.create` `club_id` bilan).
+- `GET /admin/promotions?scope=PLATFORM|CLUBS|ALL&club_id=` [`platform.settings.manage`] — standart `PLATFORM`; klub kodlari `club: {id, name}` bilan. Admin UI: klub paneli `/clubs/:id/promotions`, platforma paneli `/platform/promotions`.
 
 ### 6.13 reviews
 ```http

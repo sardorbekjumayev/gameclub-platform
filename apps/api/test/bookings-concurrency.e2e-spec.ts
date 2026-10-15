@@ -95,6 +95,30 @@ describe('Bookings concurrency (e2e)', () => {
     expect(devices.sort()).toEqual([...catDevices].sort());
   });
 
+  it('one customer may book several PCs at the same time (for friends): parallel category requests → distinct devices', async () => {
+    const [t] = await customers(1);
+    const start = at(8, 15);
+    const body = { branch_id: C.branchId, start_at: start, duration_minutes: 60, items: [{ category_id: categoryId }], payment_mode: 'AT_CLUB' };
+    const res = await Promise.all([1, 2, 3].map(() => book(t, body)));
+    const ok = res.filter((r) => r.status === 201);
+    expect(ok).toHaveLength(3);
+    expect(new Set(ok.map((r) => r.body.data.items[0].device_id)).size).toBe(3);
+    // Kategoriya to'ldi — to'rtinchisi bo'sh qurilma topmaydi
+    const full = await book(t, body).expect(409);
+    expect(full.body.error.code).toBe('BOOKING_SLOT_TAKEN');
+  });
+
+  it('one customer, parallel unpaid bookings → never more holds than booking.max_parallel_holds', async () => {
+    const [t] = await customers(1);
+    const limit = 2;
+    const res = await Promise.all(C.devices.concat(catDevices).map((d) => book(t, { branch_id: C.branchId, start_at: at(8, 19), duration_minutes: 60, items: [{ device_id: d }] })));
+    const ok = res.filter((r) => r.status === 201);
+    expect(ok.length).toBeLessThanOrEqual(limit);
+    expect(ok.length).toBeGreaterThanOrEqual(1);
+    for (const r of res.filter((x) => x.status !== 201)) expect({ status: r.status, reason: r.body.error.details?.reason }).toEqual({ status: 409, reason: 'MAX_HOLDS' });
+    expect(await prisma.bookings.count({ where: { customer_id: ok[0].body.data.customer_id, status: 'PENDING_PAYMENT' } })).toBe(ok.length);
+  });
+
   it('an expired hold is released exactly once under a race; one newcomer wins', async () => {
     const [holder, ...others] = await customers(9);
     const start = at(5, 12);
@@ -127,6 +151,20 @@ describe('Bookings concurrency (e2e)', () => {
     const d = await prisma.bookings.findUniqueOrThrow({ where: { id: loser.body.data.id } });
     expect(d.start_at.toISOString()).toBe(loser.body.data.start_at);
     expect(d.reschedule_count).toBe(0);
+  });
+
+  it('double tap (same body + same Idempotency-Key, sequential) returns the same booking — no duplicate', async () => {
+    const [t] = await customers(1);
+    const key = crypto.randomUUID();
+    const body = { branch_id: C.branchId, start_at: at(9, 15), duration_minutes: 60, items: [{ category_id: categoryId }], payment_mode: 'AT_CLUB' };
+    const first = await h.http.post(api('/bookings')).set(bearer(t)).set('Idempotency-Key', key).send(body).expect(201);
+    const second = await h.http.post(api('/bookings')).set(bearer(t)).set('Idempotency-Key', key).send(body).expect(201);
+    expect(second.body.data.id).toBe(first.body.data.id);
+    expect(await prisma.bookings.count({ where: { customer_id: first.body.data.customer_id } })).toBe(1);
+    // Do'sti uchun yana bron — yangi kalit, yangi bron (boshqa qurilma)
+    const friend = await h.http.post(api('/bookings')).set(bearer(t)).set('Idempotency-Key', crypto.randomUUID()).send(body).expect(201);
+    expect(friend.body.data.id).not.toBe(first.body.data.id);
+    expect(friend.body.data.items[0].device_id).not.toBe(first.body.data.items[0].device_id);
   });
 
   it('parallel retries with the same Idempotency-Key create exactly one booking', async () => {

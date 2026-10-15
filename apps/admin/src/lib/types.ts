@@ -318,3 +318,23 @@ export type Rental = {
   branch: { id: string; name: string; timezone: string } | null;
   customer?: { id: string; phone: string | null; first_name: string | null; last_name: string | null } | null;
 };
+
+/** Promo kod (docs/01-API.md §6.12). Pul — tiyin. `club` — faqat super admin ro'yxatida. */
+export type Promotion = {
+  id: string;
+  club_id: string | null;
+  club?: { id: string; name: string } | null;
+  code: string;
+  type: "PERCENT" | "FIXED";
+  value: number;
+  max_discount_amount: number | null;
+  min_order_amount: number | null;
+  usage_limit: number | null;
+  per_user_limit: number | null;
+  used_count: number;
+  starts_at: string | null;
+  ends_at: string | null;
+  funded_by: "CLUB" | "PLATFORM";
+  is_active: boolean;
+  created_at: string;
+};

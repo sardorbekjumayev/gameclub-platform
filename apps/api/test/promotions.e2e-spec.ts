@@ -102,6 +102,57 @@ describe('Promotions (e2e)', () => {
     });
   });
 
+  describe('super admin on behalf of a club', () => {
+    it('super admin adds a promo for a club: club-owned & club-funded, owner sees/edits it, other club does not', async () => {
+      const c = code('SAC');
+      const r = await h.http.post(api(`/clubs/${A.clubId}/promotions`)).set(bearer(h.admin)).send({ code: c, type: 'PERCENT', value: 15 }).expect(201);
+      expect(r.body.data).toMatchObject({ club_id: A.clubId, funded_by: 'CLUB', code: c });
+      const id = r.body.data.id as string;
+      const audit = await prisma.audit_logs.findFirst({ where: { action: 'promotion.create', target_id: id } });
+      expect(audit).toMatchObject({ club_id: A.clubId });
+      // Klub egasi ko'radi va tahrirlaydi
+      const own = await h.http.get(api(`/clubs/${A.clubId}/promotions`)).set(bearer(A.owner)).expect(200);
+      expect(own.body.data.map((p: { id: string }) => p.id)).toContain(id);
+      await h.http.patch(api(`/promotions/${id}`)).set(bearer(A.owner)).send({ value: 20 }).expect(200);
+      // Boshqa klub ko'rmaydi va tahrirlay olmaydi
+      const other = await h.http.get(api(`/clubs/${B.clubId}/promotions`)).set(bearer(B.owner)).expect(200);
+      expect(other.body.data.map((p: { id: string }) => p.id)).not.toContain(id);
+      await h.http.patch(api(`/promotions/${id}`)).set(bearer(B.owner)).send({ value: 1 }).expect(404);
+      // Faqat shu klubda amal qiladi
+      await validate({ code: c, branch_id: A.branchId, amount: PRICE }).expect(201);
+      const bad = await validate({ code: c, branch_id: B.branchId, amount: PRICE });
+      expect(bad.body.error).toMatchObject({ code: 'PROMO_INVALID', details: { reason: 'OTHER_CLUB' } });
+      // Super admin klub kodini tahrirlaydi/o'chiradi
+      await h.http.patch(api(`/promotions/${id}`)).set(bearer(h.admin)).send({ is_active: false }).expect(200);
+    });
+
+    it('super admin: unknown club → 404 (no orphan promotions)', async () => {
+      await h.http.post(api('/clubs/0190f1d2-3c4b-7a5e-8f60-000000000000/promotions')).set(bearer(h.admin)).send({ code: code('ORP'), type: 'FIXED', value: 1000 }).expect(404);
+    });
+
+    it('GET /admin/promotions: scope PLATFORM (default) / CLUBS / ALL / club_id, with club name', async () => {
+      const ca = (await create(A, { code: code('LSA'), type: 'FIXED', value: 1000 }).expect(201)).body.data.id as string;
+      const cb = (await create(B, { code: code('LSB'), type: 'FIXED', value: 1000 }).expect(201)).body.data.id as string;
+      const pl = (await h.http.post(api('/admin/promotions')).set(bearer(h.admin)).send({ code: code('LSP'), type: 'FIXED', value: 1000 }).expect(201)).body.data.id as string;
+      const ids = async (qs: string) => ((await h.http.get(api(`/admin/promotions?limit=100${qs}`)).set(bearer(h.admin)).expect(200)).body.data as { id: string }[]).map((p) => p.id);
+      const plat = await ids('');
+      expect(plat).toContain(pl);
+      expect(plat).not.toContain(ca);
+      const clubs = await ids('&scope=CLUBS');
+      expect(clubs).toEqual(expect.arrayContaining([ca, cb]));
+      expect(clubs).not.toContain(pl);
+      expect(await ids('&scope=ALL')).toEqual(expect.arrayContaining([ca, cb, pl]));
+      const onlyA = await ids(`&club_id=${A.clubId}`);
+      expect(onlyA).toContain(ca);
+      expect(onlyA).not.toContain(cb);
+      const row = ((await h.http.get(api(`/admin/promotions?club_id=${A.clubId}&limit=100`)).set(bearer(h.admin)).expect(200)).body.data as { id: string; club: { id: string; name: string } }[]).find((p) => p.id === ca);
+      expect(row?.club).toMatchObject({ id: A.clubId });
+      expect(typeof row?.club.name).toBe('string');
+      await h.http.get(api(`/admin/promotions?scope=CLUBS`)).set(bearer(A.owner)).expect(403);
+      await prisma.promotions.updateMany({ where: { id: pl }, data: { deleted_at: new Date(), is_active: false } });
+    });
+  });
+
   describe('validate', () => {
     it('computes percent discount with max cap; code is case-insensitive', async () => {
       const v = await validate({ code: pctCode.toLowerCase(), branch_id: A.branchId, amount: 1_000_000 }).expect(201);

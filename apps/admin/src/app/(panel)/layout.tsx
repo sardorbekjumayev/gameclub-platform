@@ -1,24 +1,6 @@
 "use client";
 
-import {
-  BarChart3,
-  Building,
-  ClipboardCheck,
-  Inbox,
-  Layers,
-  LayoutDashboard,
-  LifeBuoy,
-  LogOut,
-  type LucideIcon,
-  Menu,
-  MessageSquareWarning,
-  Radio,
-  Share2,
-  UserCircle,
-  Users,
-  Wallet,
-  X,
-} from "lucide-react";
+import { BarChart3, Building, ClipboardCheck, Inbox, Layers, LayoutDashboard, LifeBuoy, LogOut, type LucideIcon, Menu, MessageSquareWarning, Radio, Share2, TicketPercent, UserCircle, Users, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -39,6 +21,7 @@ const PLATFORM_NAV: NavItem[] = [
   { href: "/platform/clubs", label: "nav.clubApprovals", icon: ClipboardCheck, permission: "platform.clubs.approve", section: "nav.section.platform" },
   { href: "/platform/analytics", label: "nav.platformAnalytics", icon: BarChart3, permission: "platform.analytics.view", section: "nav.section.platform" },
   { href: "/platform/plans", label: "nav.plans", icon: Layers, permission: "platform.subscriptions.manage", section: "nav.section.platform" },
+  { href: "/platform/promotions", label: "nav.promotions", icon: TicketPercent, permission: "platform.settings.manage", section: "nav.section.platform" },
   { href: "/platform/users", label: "nav.users", icon: Users, permission: "platform.users.view", section: "nav.section.platform" },
   { href: "/platform/support", label: "nav.support", icon: Inbox, permission: "platform.tickets.manage", section: "nav.section.platform" },
   { href: "/platform/social", label: "nav.social", icon: Share2, permission: "platform.settings.manage", section: "nav.section.platform" },
