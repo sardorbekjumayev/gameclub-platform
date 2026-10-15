@@ -47,11 +47,11 @@ export class ClubsService {
     private readonly plans: PlansService,
   ) {}
 
-  private async uniqueSlug(name: string) {
+  private async uniqueSlug(name: string, db: Prisma.TransactionClient = this.prisma) {
     const base = slugify(name);
     for (let i = 0; i < 20; i++) {
       const slug = i === 0 ? base : `${base}-${Math.random().toString(36).slice(2, 6)}`;
-      if (!(await this.prisma.clubs.findUnique({ where: { slug } }))) return slug;
+      if (!(await db.clubs.findUnique({ where: { slug } }))) return slug;
     }
     return `${base}-${uuidv7().slice(-8)}`;
   }
@@ -127,13 +127,17 @@ export class ClubsService {
     return { ...rest, has_transfer_card: !!transfer_card_number, subscription: sub, counts, cancellation_policy: policyFrom(club.cancellation_policy) };
   }
 
-  private async createClubRecord(tx: Prisma.TransactionClient, ownerId: string, dto: CreateClubDto, status: string, actorId: string) {
+  /**
+   * Tranzaksiya ichida faqat `tx` ishlatiladi: `this.prisma` ikkinchi ulanish so'raydi va
+   * parallel yaratishda connection pool tugab qotib qoladi. Sinov sozlamalari (`trial`) tranzaksiyadan oldin o'qiladi.
+   */
+  private async createClubRecord(tx: Prisma.TransactionClient, ownerId: string, dto: CreateClubDto, status: string, actorId: string, trial: { plan_id: string | null; days: number }) {
     const club = await tx.clubs.create({
       data: {
         id: uuidv7(),
         owner_id: ownerId,
         name: dto.name,
-        slug: await this.uniqueSlug(dto.name),
+        slug: await this.uniqueSlug(dto.name, tx),
         description: dto.description,
         phone: dto.phone,
         telegram: dto.telegram,
@@ -152,7 +156,6 @@ export class ClubsService {
     const owner = await tx.roles.findUniqueOrThrow({ where: { code: 'CLUB_OWNER' } });
     await tx.user_roles.create({ data: { id: uuidv7(), user_id: ownerId, role_id: owner.id, club_id: club.id, granted_by: actorId } });
     // Yangi klub: super admin sozlagan sinov rejasi va muddati (docs/01-API.md §6.18)
-    const trial = await this.plans.trialSettings();
     const plan = trial.plan_id && trial.days > 0 ? { id: trial.plan_id } : null;
     if (plan) {
       const now = new Date();
@@ -176,9 +179,10 @@ export class ClubsService {
     if (!user.password_hash && !dto.owner_password) {
       throw new AppException('VALIDATION_ERROR', 'owner_password is required to access the admin panel', { field: 'owner_password' });
     }
+    const trial = await this.plans.trialSettings();
     const club = await this.prisma.$transaction(async (tx) => {
       if (dto.owner_password) await tx.users.update({ where: { id: userId }, data: { password_hash: await argon2.hash(dto.owner_password, { type: argon2.argon2id }) } });
-      const c = await this.createClubRecord(tx, userId, dto, 'DRAFT', userId);
+      const c = await this.createClubRecord(tx, userId, dto, 'DRAFT', userId, trial);
       await this.audit.log({ actor_id: userId, club_id: c.id, action: 'club.create', target_type: 'club', target_id: c.id, new_value: { name: c.name }, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id }, tx);
       return c;
     });
@@ -189,6 +193,7 @@ export class ClubsService {
   /** Super admin: egasi telefon bo'yicha (yo'q bo'lsa yaratiladi) klub ochadi. */
   async adminCreate(dto: AdminCreateClubDto, actor: Actor) {
     const { owner_phone, owner_first_name, owner_last_name, activate, ...clubDto } = dto;
+    const trial = await this.plans.trialSettings();
     const club = await this.prisma.$transaction(async (tx) => {
       let owner = await tx.users.findUnique({ where: { phone: owner_phone } });
       if (owner) await this.assertNotPlatformStaff(owner.id, tx);
@@ -199,7 +204,7 @@ export class ClubsService {
         });
       }
       if (dto.owner_password) await tx.users.update({ where: { id: owner.id }, data: { password_hash: await argon2.hash(dto.owner_password, { type: argon2.argon2id }) } });
-      const c = await this.createClubRecord(tx, owner.id, clubDto, activate === false ? 'DRAFT' : 'ACTIVE', actor.id); // super admin qo'shgani moderatsiyasiz faol
+      const c = await this.createClubRecord(tx, owner.id, clubDto, activate === false ? 'DRAFT' : 'ACTIVE', actor.id, trial); // super admin qo'shgani moderatsiyasiz faol
       await this.audit.log({ actor_id: actor.id, club_id: c.id, action: 'admin.club.create', target_type: 'club', target_id: c.id, new_value: { name: c.name, owner_phone }, ip: actor.ip, user_agent: actor.ua, request_id: actor.request_id }, tx);
       return { club: c, owner_id: owner.id };
     });

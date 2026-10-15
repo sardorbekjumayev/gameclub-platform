@@ -353,7 +353,7 @@ export class BookingsService {
             promo = await this.pricing.promo(dto.promo_code, {
               club_id: ctx.club.id, branch_id: ctx.branch.id, user_id: customerId, subtotal, device_types: quotes.map((x) => x.device.type), start,
               weekday: DateTime.fromJSDate(start, { zone: ctx.branch.timezone }).weekday,
-            });
+            }, tx);
           }
           const discount = promo?.discount ?? 0n;
           const total = subtotal - discount;
