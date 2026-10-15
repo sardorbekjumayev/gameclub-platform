@@ -5,6 +5,7 @@ import { Idempotent } from '../../common/interceptors/idempotency.interceptor';
 import { RbacService } from '../rbac/rbac.service';
 import { BookingsService, Caller } from './bookings.service';
 import { AvailabilityQuery, BookingListQuery, CancelDto, CreateBookingDto, RescheduleDto, SlotsQuery } from './dto/bookings.dto';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
 const uuid = new ParseUUIDPipe();
 
@@ -21,17 +22,17 @@ export class BookingsController {
     return { id: u.id, grants: await this.rbac.grants(u.id) };
   }
 
-  @Public() @Get('branches/:id/availability') @ApiOperation({ summary: 'Oraliq bo\'yicha qurilmalar holati va narxi' })
+  @RateLimit('public') @Public() @Get('branches/:id/availability') @ApiOperation({ summary: 'Oraliq bo\'yicha qurilmalar holati va narxi' })
   availability(@Param('id', uuid) id: string, @Query() q: AvailabilityQuery) {
     return this.bookings.availability(id, q);
   }
 
-  @Public() @Get('branches/:id/slots') @ApiOperation({ summary: 'Kun bo\'yicha slotlar va bo\'sh qurilmalar soni' })
+  @RateLimit('public') @Public() @Get('branches/:id/slots') @ApiOperation({ summary: 'Kun bo\'yicha slotlar va bo\'sh qurilmalar soni' })
   slots(@Param('id', uuid) id: string, @Query() q: SlotsQuery) {
     return this.bookings.slots(id, q);
   }
 
-  @Post('bookings') @Idempotent() @ApiOperation({ summary: 'Bron yaratish (hold → PENDING_PAYMENT yoki CONFIRMED)' })
+  @RateLimit('write', 'promo') @Post('bookings') @Idempotent() @ApiOperation({ summary: 'Bron yaratish (hold → PENDING_PAYMENT yoki CONFIRMED)' })
   async create(@Body() dto: CreateBookingDto, @CurrentUser() u: AuthUser, @Headers('idempotency-key') key?: string) {
     return this.bookings.create(dto, await this.caller(u), key);
   }
@@ -56,12 +57,12 @@ export class BookingsController {
     return this.bookings.timeline(id, await this.caller(u));
   }
 
-  @Post('bookings/:id/cancel') @Idempotent()
+  @RateLimit('write') @Post('bookings/:id/cancel') @Idempotent()
   async cancel(@Param('id', uuid) id: string, @Body() dto: CancelDto, @CurrentUser() u: AuthUser) {
     return this.bookings.cancel(id, await this.caller(u), dto.reason);
   }
 
-  @Post('bookings/:id/reschedule') @Idempotent()
+  @RateLimit('write') @Post('bookings/:id/reschedule') @Idempotent()
   async reschedule(@Param('id', uuid) id: string, @Body() dto: RescheduleDto, @CurrentUser() u: AuthUser) {
     return this.bookings.reschedule(id, await this.caller(u), dto);
   }

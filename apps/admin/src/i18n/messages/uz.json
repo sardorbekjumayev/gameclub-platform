@@ -47,6 +47,8 @@
   "errors.UNAUTHORIZED": "Login yoki parol noto'g'ri",
   "errors.FORBIDDEN": "Ruxsat yo'q",
   "errors.RATE_LIMITED": "Juda ko'p urinish. Birozdan keyin qayta urinib ko'ring",
+  "errors.RATE_LIMITED_SECONDS": "Juda ko'p urinish. {n} soniyadan keyin qayta urinib ko'ring",
+  "errors.RATE_LIMITED_MINUTES": "Juda ko'p urinish. {n} daqiqadan keyin qayta urinib ko'ring",
   "errors.VALIDATION_ERROR": "Ma'lumotlar noto'g'ri kiritilgan",
   "errors.CONFLICT": "Bu qiymat allaqachon band",
   "errors.NETWORK_ERROR": "Server bilan aloqa yo'q",

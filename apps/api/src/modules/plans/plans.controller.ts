@@ -6,6 +6,7 @@ import { Idempotent } from '../../common/interceptors/idempotency.interceptor';
 import type { Actor } from '../clubs/clubs.service';
 import { AssignPlanDto, CreatePlanDto, SubscriptionListQuery, TrialSettingsDto, UpdatePlanDto } from './plans.dto';
 import { PlansService } from './plans.service';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
 const uuid = new ParseUUIDPipe({ version: undefined });
 
@@ -15,7 +16,7 @@ const uuid = new ParseUUIDPipe({ version: undefined });
 export class PlansController {
   constructor(private readonly plans: PlansService) {}
 
-  @Public() @Get('plans') @ApiOperation({ summary: 'Faol tarif rejalari (ommaviy)' })
+  @RateLimit('public') @Public() @Get('plans') @ApiOperation({ summary: 'Faol tarif rejalari (ommaviy)' })
   list() {
     return this.plans.publicList();
   }

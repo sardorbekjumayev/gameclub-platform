@@ -4,6 +4,7 @@ import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nes
 import type { Response } from 'express';
 import { AuthUser, CurrentUser, Public } from '../../common/decorators/auth.decorators';
 import { AppException } from '../../common/errors';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorators';
 import { can } from '../rbac/access';
 import { RbacService } from '../rbac/rbac.service';
 import { RawFileQuery, UploadFileDto } from './files.dto';
@@ -22,7 +23,7 @@ export class FilesController {
     private readonly rbac: RbacService,
   ) {}
 
-  @Post()
+  @RateLimit('write') @Post()
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -55,7 +56,7 @@ export class FilesController {
     return this.files.meta(id, u.id, await this.rbac.grants(u.id));
   }
 
-  @Public() @Get(':id/raw') @ApiOperation({ summary: 'Fayl tarkibi: ommaviy (CLUB_MEDIA) yoki imzolangan havola' })
+  @RateLimit('public') @Public() @Get(':id/raw') @ApiOperation({ summary: 'Fayl tarkibi: ommaviy (CLUB_MEDIA) yoki imzolangan havola' })
   async raw(@Param('id', uuid) id: string, @Query() q: RawFileQuery, @Res() res: Response) {
     const { file, body } = await this.files.raw(id, q.exp, q.sig);
     res.setHeader('Content-Type', file.mime);

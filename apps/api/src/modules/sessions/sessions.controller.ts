@@ -7,6 +7,7 @@ import { CheckInDto, ScanDto } from '../bookings/dto/bookings.dto';
 import { RbacService } from '../rbac/rbac.service';
 import { ActiveQuery, ExtendDto, MoveDto, StartSessionDto, StopDto, WalkInDto } from './dto/sessions.dto';
 import { SessionsService } from './sessions.service';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
 const uuid = new ParseUUIDPipe();
 
@@ -28,7 +29,7 @@ export class SessionsController {
     return this.sessions.checkIn(id, await this.caller(u), dto);
   }
 
-  @Post('bookings/check-in/scan') @RequirePermission('bookings.checkin') @ApiOperation({ summary: 'QR yoki bron kodi bo\'yicha check-in' })
+  @RateLimit('sensitive') @Post('bookings/check-in/scan') @RequirePermission('bookings.checkin') @ApiOperation({ summary: 'QR yoki bron kodi bo\'yicha check-in' })
   async scan(@Body() dto: ScanDto, @CurrentUser() u: AuthUser) {
     return this.sessions.scan(dto.qr_payload, await this.caller(u), dto.start_session);
   }

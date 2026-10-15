@@ -61,7 +61,7 @@ Xato:
 
 **Soft delete:** DELETE endpointlar `deleted_at` qo'yadi. Faol bron/sessiyasi bor qurilma/filialni o'chirish `409 CONFLICT`.
 
-**Rate limit** (Redis, `@nestjs/throttler`): umumiy 120/min/IP; `POST /auth/send-otp` 3/10min/telefon + 10/soat/IP; `POST /auth/verify-otp` 5 urinish/kod; `POST /auth/login` 10/10min/IP+login; `POST /bookings` 20/min/user; payment webhook — IP allowlist/imzo bilan.
+**Rate limit** (Redis, `@nestjs/throttler`): darajalar va endpointlar — pastda «Rate limit (2026-10-15)». Bunga qo'shimcha servis ichidagi limitlar: `POST /auth/send-otp` 3/10min/telefon + 10/soat/IP + 60s cooldown; `POST /auth/verify-otp` 5 urinish/kod; `POST /auth/login` 10/10min/IP+login; payment webhook — imzo/Basic auth bilan (rate limit yo'q).
 
 ## 4. Autentifikatsiya
 
@@ -674,3 +674,20 @@ Bot (`@<TELEGRAM_BOT_USERNAME>`) endi faqat OTP emas: bog'langan raqam (`telegra
 - `POST /clubs/:id/documents {type, file_url | file_id}` — `file_id` shu klub uchun yuklangan, biriktirilmagan `CLUB_DOCUMENT` bo'lishi kerak; ro'yxatlarda `file_url` imzolangan havola bo'lib qaytadi.
 - Biriktirilmagan cheklar 24 soatdan keyin o'chiriladi (soatlik fon vazifa).
 
+
+## Rate limit (2026-10-15)
+**Qaror:** barcha HTTP marshrutlar global guard (`common/rate-limit/`, `@nestjs/throttler` + o'zimizning Redis storage — Lua, atomar) orqali; hisoblagichlar Redis'da (`rl:*`), bir nechta API instansiyasi uchun umumiy. **Kalit:** token bo'lsa user id, aks holda klient IP (`trust proxy: loopback` — Nginx/Next proxy `X-Forwarded-For` beradi). Guard JWT guard'dan keyin, permission guard'dan oldin ishlaydi.
+- **Javob:** `429`, `error.code = RATE_LIMITED`, `error.details.retry_after` (soniya) va `Retry-After` header. Limit oshgach kalit oyna davomiyligiga bloklanadi. Web/admin: `retry_after` bo'lsa «N soniya/daqiqadan keyin» matni (`errors.RATE_LIMITED_SECONDS|MINUTES`).
+- **Sozlash** (`.env`, format `<so'rov>/<oyna soniya>`; bo'sh — standart):
+
+| Daraja | Env | Standart | Hisob | Endpointlar |
+|---|---|---|---|---|
+| global | `RATE_LIMIT_GLOBAL` | 300/60 | kalit bo'yicha, barcha marshrutlar umumiy | hammasi (istisnolardan tashqari) |
+| public | `RATE_LIMIT_PUBLIC` | 120/60 | marshrut + kalit | `GET /files/:id/raw`, `GET /discovery/*`, `GET /branches/{nearby,search,map,:id/summary}`, `GET /branches/:idOrSlug`, `/branches/:id/{availability,slots,reviews,device-categories,devices/public,tariffs,packages}`, `POST /branches/:id/price-quote`, `GET /clubs`, `/clubs/:idOrSlug/public`, `/clubs/:clubId/{branches,announcements}`, `GET /rental-items[/:id[/quote,/slots]]`, `GET /plans`, `/announcements`, `/social`, `/payments/providers` |
+| write | `RATE_LIMIT_WRITE` | 30/60 | marshrut + kalit | `POST /files`, `POST /bookings`, `/bookings/:id/{cancel,reschedule}`, `POST /rentals`, `/rentals/:id/cancel`, `POST /payments`, `/payments/transfer`, `/payments/:id/demo/confirm`, `POST|PATCH|DELETE /reviews[/:id]`, `/reviews/:id/report`, `PUT|DELETE /favorites/:branchId`, `POST /support/tickets`, `/support/tickets/:id/messages`, `POST /users/me/device-tokens`, `POST /clubs` |
+| sensitive | `RATE_LIMIT_SENSITIVE` | 20/300 | marshrut + kalit | `POST /auth/{login,send-otp,verify-otp,password,invitations/preview,invitations/accept}`, `POST /bookings/check-in/scan` (bron kodi/QR) |
+| promo | `RATE_LIMIT_PROMO` | 10/600 | kalit bo'yicha, marshrutlar umumiy | `POST /promotions/validate`; `POST /bookings` va `POST /branches/:id/price-quote` — faqat body'da `promo_code` bo'lsa |
+
+- **Istisno (hech qachon cheklanmaydi, `@NoRateLimit()`):** `/health*`, `POST /webhooks/payments/{payme,click/prepare,click/complete,demo}` (provayder o'zi autentifikatsiya qiladi, qayta urinishlari 429 olmasligi kerak), `POST /telegram/webhook`, WebSocket gateway.
+- **Test:** e2e muhitda limitlar juda yuqori (`test/utils/rate-limit.env.ts`), `test/rate-limit.e2e-spec.ts` ularni pasaytirib 429/Retry-After, user bo'yicha kalit, webhook va health istisnolarini tekshiradi.
+- **Deploy:** API oldidagi proxy loopback'da bo'lmasa `trust proxy` ni moslash kerak — aks holda barcha anonim so'rovlar proxy IP'si ostida bitta hisobga tushadi.

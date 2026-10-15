@@ -13,6 +13,7 @@ import {
   BulkDevicesDto, CategoryDto, DeviceDto, DeviceStatusDto, LayoutDto, MaintenanceDto, PriceQuoteDto, RoomTariffDto, TariffDto, UpdateDeviceDto, UpdateMaintenanceDto, UpdateTariffDto,
 } from './dto/devices.dto';
 import { DevicesService } from './devices.service';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
 const uuid = new ParseUUIDPipe();
 
@@ -28,7 +29,7 @@ export class DevicesController {
   ) {}
 
   // Kategoriyalar
-  @Public() @Get('branches/:branchId/device-categories')
+  @RateLimit('public') @Public() @Get('branches/:branchId/device-categories')
   categories(@Param('branchId', uuid) id: string) {
     return this.devices.categories(id, null);
   }
@@ -50,7 +51,7 @@ export class DevicesController {
   list(@Param('branchId', uuid) id: string, @Grants() g: Grant[]) {
     return this.devices.list(id, g);
   }
-  @Public() @Get('branches/:branchId/devices/public') @ApiOperation({ summary: 'Ommaviy qurilmalar ro\'yxati (tur, specs)' })
+  @RateLimit('public') @Public() @Get('branches/:branchId/devices/public') @ApiOperation({ summary: 'Ommaviy qurilmalar ro\'yxati (tur, specs)' })
   listPublic(@Param('branchId', uuid) id: string) {
     return this.devices.listPublic(id);
   }
@@ -94,11 +95,11 @@ export class DevicesController {
   }
 
   // Tariflar
-  @Public() @Get('branches/:branchId/tariffs') @ApiOperation({ summary: 'Tariflar (ommaviy: faol)' })
+  @RateLimit('public') @Public() @Get('branches/:branchId/tariffs') @ApiOperation({ summary: 'Tariflar (ommaviy: faol)' })
   tariffsPublic(@Param('branchId', uuid) id: string) {
     return this.devices.tariffs(id, null);
   }
-  @Public() @Get('branches/:branchId/packages') @ApiOperation({ summary: 'Paket narxlar (ommaviy: faol, regular_amount — tejash uchun)' })
+  @RateLimit('public') @Public() @Get('branches/:branchId/packages') @ApiOperation({ summary: 'Paket narxlar (ommaviy: faol, regular_amount — tejash uchun)' })
   packages(@Param('branchId', uuid) id: string) {
     return this.devices.packages(id);
   }
@@ -123,7 +124,7 @@ export class DevicesController {
     return this.devices.removeTariff(id, g, a);
   }
 
-  @Public() @Post('branches/:branchId/price-quote') @ApiOperation({ summary: 'Narx hisoblash (promo bilan)' })
+  @RateLimit('public', 'promo') @Public() @Post('branches/:branchId/price-quote') @ApiOperation({ summary: 'Narx hisoblash (promo bilan)' })
   async quote(@Param('branchId', uuid) branchId: string, @Body() dto: PriceQuoteDto, @CurrentUser() u?: AuthUser) {
     const ctx = await this.bookings.branchCtx(branchId, { requireActive: false });
     const tariffs = await this.pricing.tariffs(branchId);

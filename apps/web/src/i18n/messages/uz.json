@@ -39,6 +39,8 @@
   "errors.OTP_EXPIRED": "Kod muddati tugagan. Yangi kod oling",
   "errors.OTP_TOO_MANY_ATTEMPTS": "Juda ko'p noto'g'ri urinish. Yangi kod oling",
   "errors.RATE_LIMITED": "Juda ko'p so'rov. Birozdan keyin urinib ko'ring",
+  "errors.RATE_LIMITED_SECONDS": "Juda ko'p so'rov. {n} soniyadan keyin qayta urinib ko'ring",
+  "errors.RATE_LIMITED_MINUTES": "Juda ko'p so'rov. {n} daqiqadan keyin qayta urinib ko'ring",
   "errors.VALIDATION_ERROR": "Ma'lumotlar noto'g'ri kiritilgan",
   "errors.UNAUTHORIZED": "Sessiya tugagan. Qayta kiring",
   "errors.FORBIDDEN": "Ruxsat yo'q",
