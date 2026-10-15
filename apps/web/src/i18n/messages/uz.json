@@ -577,5 +577,22 @@
   "errors.VALIDATION_ERROR.PACKAGE_TIME": "Bu paket tanlangan vaqtda amal qilmaydi",
   "errors.VALIDATION_ERROR.PACKAGE_DURATION": "Paketli bron davomiyligini o'zgartirib bo'lmaydi",
   "book.pickAny": "Istalgan bo'sh joyni tanlash",
-  "auth.reasonBook": "Bronni yakunlash uchun telefon raqamingiz bilan kiring — tanlovingiz saqlanib qoladi."
+  "auth.reasonBook": "Bronni yakunlash uchun telefon raqamingiz bilan kiring — tanlovingiz saqlanib qoladi.",
+  "legal.nav": "Huquqiy hujjatlar",
+  "legal.offer": "Ommaviy oferta",
+  "legal.privacy": "Maxfiylik siyosati",
+  "legal.terms": "Foydalanish shartlari",
+  "legal.partner": "Klublar uchun hamkorlik shartlari",
+  "legal.revision": "Tahrir {v} · {date}",
+  "legal.retry": "Qayta urinish",
+  "legal.consent.login": "Davom etish orqali siz {offer} va {privacy} rozilik bildirasiz",
+  "legal.consent.booking": "Bron qilish orqali siz {offer}, {terms} va klubning qaytarish shartlariga rozilik bildirasiz",
+  "legal.consent.pay": "To'lash orqali siz {offer}, {terms} va klubning qaytarish shartlariga rozilik bildirasiz",
+  "legal.consent.offer": "Ommaviy oferta",
+  "legal.consent.privacy": "Maxfiylik siyosatiga",
+  "legal.consent.terms": "Foydalanish shartlari",
+  "legal.desc.offer": "Zonup platformasi va mijozlar o'rtasidagi bron xizmati bo'yicha ommaviy oferta.",
+  "legal.desc.privacy": "Zonup qanday shaxsiy ma'lumotlarni to'playdi, qayerda saqlaydi va qanday himoya qiladi.",
+  "legal.desc.terms": "Zonup'da bron qilish, bekor qilish, promo kodlar, sharhlar va hisobni bloklash qoidalari.",
+  "legal.desc.partner": "Kompyuter va o'yin klublari uchun Zonup hamkorlik shartlari: obuna, komissiya, to'lovlar."
 }

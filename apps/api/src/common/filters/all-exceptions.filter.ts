@@ -13,6 +13,12 @@ const STATUS_TO_CODE: Record<number, ErrorCode> = {
   429: 'RATE_LIMITED',
 };
 
+/** `http-errors` uslubidagi klient xatosi (`expose: true`, 4xx status). */
+function isClientHttpError(e: unknown): e is Error & { status: number } {
+  const x = e as { status?: unknown; expose?: unknown } | null;
+  return e instanceof Error && typeof x?.status === 'number' && x.status >= 400 && x.status < 500 && x.expose === true;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('Exceptions');
@@ -46,6 +52,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       } else {
         message = exception.message;
       }
+    } else if (isClientHttpError(exception)) {
+      // body-parser xatolari (masalan, 100 KB dan katta JSON — 413, buzuq JSON — 400) 500 emas
+      status = exception.status;
+      code = STATUS_TO_CODE[status] ?? 'VALIDATION_ERROR';
+      message = exception.message;
     } else {
       this.logger.error(exception instanceof Error ? exception.stack : String(exception), requestId);
     }

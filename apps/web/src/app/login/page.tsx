@@ -3,6 +3,7 @@
 import type { LoginResult, SendOtpResult } from "@gc/types";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { LegalConsent } from "@/components/legal-consent";
 import { Alert, Button, Card, Field, Input } from "@/components/ui";
 import { useErrorText, useI18n } from "@/i18n/provider";
 import { session, useAuth } from "@/lib/session";
@@ -114,6 +115,7 @@ function Login() {
             <Button type="submit" loading={busy} size="lg" className="w-full">
               {t("auth.sendCode")}
             </Button>
+            <LegalConsent kind="login" />
           </form>
         ) : (
           <form

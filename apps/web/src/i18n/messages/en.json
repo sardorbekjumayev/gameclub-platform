@@ -577,5 +577,22 @@
   "errors.VALIDATION_ERROR.PACKAGE_TIME": "This package is not available at the selected time",
   "errors.VALIDATION_ERROR.PACKAGE_DURATION": "A package booking's duration cannot be changed",
   "book.pickAny": "Pick any free seat",
-  "auth.reasonBook": "Sign in with your phone number to finish booking — your selection will be kept."
+  "auth.reasonBook": "Sign in with your phone number to finish booking — your selection will be kept.",
+  "legal.nav": "Legal documents",
+  "legal.offer": "Public offer",
+  "legal.privacy": "Privacy policy",
+  "legal.terms": "Terms of use",
+  "legal.partner": "Partner terms for clubs",
+  "legal.revision": "Revision {v} · {date}",
+  "legal.retry": "Try again",
+  "legal.consent.login": "By continuing, you agree to the {offer} and the {privacy}",
+  "legal.consent.booking": "By booking, you agree to the {offer}, the {terms} and the club's refund policy",
+  "legal.consent.pay": "By paying, you agree to the {offer}, the {terms} and the club's refund policy",
+  "legal.consent.offer": "Public Offer",
+  "legal.consent.privacy": "Privacy Policy",
+  "legal.consent.terms": "Terms of Use",
+  "legal.desc.offer": "Public offer for the booking service between the Zonup platform and its customers.",
+  "legal.desc.privacy": "What personal data Zonup collects, where it is stored and how it is protected.",
+  "legal.desc.terms": "Rules for booking, cancellation, promo codes, reviews and account blocking on Zonup.",
+  "legal.desc.partner": "Zonup partner terms for computer and gaming clubs: subscription, commission, payouts."
 }

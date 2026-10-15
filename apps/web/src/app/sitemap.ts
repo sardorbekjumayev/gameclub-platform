@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { LEGAL_DOCS } from "@/lib/legal";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4710";
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://localhost:4700";
@@ -11,6 +12,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/`, changeFrequency: "daily", priority: 1 },
     { url: `${SITE_URL}/clubs`, changeFrequency: "daily", priority: 0.9 },
     { url: `${SITE_URL}/map`, changeFrequency: "daily", priority: 0.7 },
+    ...LEGAL_DOCS.map((d) => ({ url: `${SITE_URL}/legal/${d}`, changeFrequency: "monthly" as const, priority: 0.3 })),
   ];
   try {
     const res = await fetch(`${API_ORIGIN}/api/v1/discovery/search?limit=100`, { next: { revalidate } });

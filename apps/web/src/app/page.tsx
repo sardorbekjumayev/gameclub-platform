@@ -24,7 +24,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ActiveSessions } from "@/components/active-sessions";
-import { SocialLinks, SocialPromoBanner, useSocial } from "@/components/social";
+import { SocialPromoBanner } from "@/components/social";
 import { type MessageKey, useI18n } from "@/i18n/provider";
 import type { BranchCard } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
@@ -44,7 +44,6 @@ export default function Home() {
   const router = useRouter();
   const [q, setQ] = useState("");
   const ownerUrl = CLUB_PANEL_URL;
-  const social = useSocial();
   const top = useApi<BranchCard[]>("/discovery/search?limit=6&sort=rating");
   const clubs = top.data ?? [];
   const free = clubs.reduce((n, b) => n + b.free_devices, 0);
@@ -310,28 +309,7 @@ export default function Home() {
           </div>
         </section>
       </div>
-
-      <footer className="border-t border-line-soft">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-8 text-sm text-muted sm:flex-row sm:items-center sm:justify-between sm:px-8">
-          <div className="flex flex-col gap-3">
-            <span>© {new Date().getFullYear()} Zonup · <span className="font-semibold text-fg">zonup.uz</span> · {t("home.footer")}</span>
-            <SocialLinks social={social} size="sm" />
-          </div>
-          <div className="flex gap-5">
-            <Link href="/clubs" className="hover:text-fg">
-              {t("nav.clubs")}
-            </Link>
-            <Link href="/map" className="hover:text-fg">
-              {t("nav.map")}
-            </Link>
-            {ownerUrl && (
-              <a href={ownerUrl} className="hover:text-fg">
-                {t("home.owner.cta")}
-              </a>
-            )}
-          </div>
-        </div>
-      </footer>
+      {/* Footer — barcha sahifalarda (layout → SiteFooter) */}
     </main>
   );
 }

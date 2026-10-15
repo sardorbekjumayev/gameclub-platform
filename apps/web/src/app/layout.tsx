@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Chakra_Petch, Manrope } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/header";
+import { SiteFooter } from "@/components/site-footer";
 import { Providers } from "./providers";
 
 const manrope = Manrope({
@@ -51,6 +52,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Providers>
           <Header />
           {children}
+          <SiteFooter />
         </Providers>
       </body>
     </html>

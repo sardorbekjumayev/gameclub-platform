@@ -1,6 +1,8 @@
 "use client";
 
 import { formatDateTime, formatMoney } from "@gc/types";
+import { FileText } from "lucide-react";
+import Link from "next/link";
 import { StatusBadge } from "@/components/status";
 import { Card, cx } from "@/components/ui";
 import { useI18n } from "@/i18n/provider";
@@ -25,8 +27,12 @@ export function SubscriptionCard({ data, children }: { data: ClubSubscription; c
             </div>
           )}
         </div>
+        <Link href="/partner-terms" className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted hover:text-accent">
+          <FileText className="h-3.5 w-3.5" />
+          {t("legal.partnerLink")}
+        </Link>
       </div>
-      {!sub && <div className="text-sm text-danger-soft">{t("plan.noneHint")}</div>}
+      {!sub &&<div className="text-sm text-danger-soft">{t("plan.noneHint")}</div>}
       <div className="grid gap-3 sm:grid-cols-3">
         {(["branches", "devices", "staff"] as const).map((k) => {
           const limit = sub?.plan.limits[k] ?? null;

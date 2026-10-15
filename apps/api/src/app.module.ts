@@ -28,6 +28,7 @@ import { PayoutsModule } from './modules/payouts/payouts.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { TelegramBotModule } from './modules/telegram/bot/telegram-bot.module';
 import { CoreServicesModule } from './modules/notifications/notifications.module';
+import { LegalModule } from './modules/legal/legal.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { CoreServicesModule } from './modules/notifications/notifications.module
     EngagementModule,
     AnalyticsModule,
     TelegramBotModule,
+    LegalModule,
     HealthModule,
   ],
   providers: [

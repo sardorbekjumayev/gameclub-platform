@@ -4,6 +4,7 @@ import { formatMoney } from "@gc/types";
 import { useRouter } from "next/navigation";
 import { Check, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { LegalConsent } from "@/components/legal-consent";
 import { RefundPolicy } from "@/components/refund-policy";
 import { SeatMap } from "@/components/seat-map";
 import { Alert, Button, Card, Input, Spinner, cx } from "@/components/ui";
@@ -361,6 +362,7 @@ export function BookingWidget({ branch }: { branch: BranchDetail }) {
           <Button size="lg" className="w-full" loading={busy} onClick={book}>
             {me ? (payMode === "ONLINE" ? t("book.bookAndPay") : t("book.book")) : t("book.loginToBook")}
           </Button>
+          <LegalConsent kind="booking" />
         </section>
       )}
     </Card>
