@@ -596,5 +596,22 @@
   "transfer.receiptRemove": "Убрать чек",
   "transfer.receiptHint": "Скриншот чека из банковского приложения или PDF (до 10 МБ). Оператор его проверит.",
   "transfer.receiptTooBig": "Файл слишком большой (до 10 МБ)",
-  "transfer.receiptView": "Отправленный чек"
+  "transfer.receiptView": "Отправленный чек",
+  "legal.nav": "Правовые документы",
+  "legal.offer": "Публичная оферта",
+  "legal.privacy": "Политика конфиденциальности",
+  "legal.terms": "Условия использования",
+  "legal.partner": "Условия партнёрства для клубов",
+  "legal.revision": "Редакция {v} · {date}",
+  "legal.retry": "Повторить",
+  "legal.consent.login": "Продолжая, вы соглашаетесь с {offer} и {privacy}",
+  "legal.consent.booking": "Бронируя, вы соглашаетесь с {offer}, {terms} и условиями возврата клуба",
+  "legal.consent.pay": "Оплачивая, вы соглашаетесь с {offer}, {terms} и условиями возврата клуба",
+  "legal.consent.offer": "публичной офертой",
+  "legal.consent.privacy": "политикой конфиденциальности",
+  "legal.consent.terms": "условиями использования",
+  "legal.desc.offer": "Публичная оферта на услугу бронирования между платформой Zonup и клиентами.",
+  "legal.desc.privacy": "Какие персональные данные собирает Zonup, где хранит и как защищает.",
+  "legal.desc.terms": "Правила бронирования, отмены, промокодов, отзывов и блокировки аккаунта в Zonup.",
+  "legal.desc.partner": "Условия партнёрства Zonup для компьютерных и игровых клубов: подписка, комиссия, выплаты."
 }

@@ -596,5 +596,22 @@
   "transfer.receiptRemove": "Chekni olib tashlash",
   "transfer.receiptHint": "Bank ilovasidagi to'lov chekining skrinshoti yoki PDF (10 MB gacha). Operator uni tekshiradi.",
   "transfer.receiptTooBig": "Fayl juda katta (10 MB gacha)",
-  "transfer.receiptView": "Yuborilgan chek"
+  "transfer.receiptView": "Yuborilgan chek",
+  "legal.nav": "Huquqiy hujjatlar",
+  "legal.offer": "Ommaviy oferta",
+  "legal.privacy": "Maxfiylik siyosati",
+  "legal.terms": "Foydalanish shartlari",
+  "legal.partner": "Klublar uchun hamkorlik shartlari",
+  "legal.revision": "Tahrir {v} · {date}",
+  "legal.retry": "Qayta urinish",
+  "legal.consent.login": "Davom etish orqali siz {offer} va {privacy} rozilik bildirasiz",
+  "legal.consent.booking": "Bron qilish orqali siz {offer}, {terms} va klubning qaytarish shartlariga rozilik bildirasiz",
+  "legal.consent.pay": "To'lash orqali siz {offer}, {terms} va klubning qaytarish shartlariga rozilik bildirasiz",
+  "legal.consent.offer": "Ommaviy oferta",
+  "legal.consent.privacy": "Maxfiylik siyosatiga",
+  "legal.consent.terms": "Foydalanish shartlari",
+  "legal.desc.offer": "Zonup platformasi va mijozlar o'rtasidagi bron xizmati bo'yicha ommaviy oferta.",
+  "legal.desc.privacy": "Zonup qanday shaxsiy ma'lumotlarni to'playdi, qayerda saqlaydi va qanday himoya qiladi.",
+  "legal.desc.terms": "Zonup'da bron qilish, bekor qilish, promo kodlar, sharhlar va hisobni bloklash qoidalari.",
+  "legal.desc.partner": "Kompyuter va o'yin klublari uchun Zonup hamkorlik shartlari: obuna, komissiya, to'lovlar."
 }

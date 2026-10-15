@@ -596,5 +596,22 @@
   "transfer.receiptRemove": "Remove receipt",
   "transfer.receiptHint": "A screenshot of the payment receipt from your banking app or a PDF (up to 10 MB). The operator checks it.",
   "transfer.receiptTooBig": "File is too large (up to 10 MB)",
-  "transfer.receiptView": "Submitted receipt"
+  "transfer.receiptView": "Submitted receipt",
+  "legal.nav": "Legal documents",
+  "legal.offer": "Public offer",
+  "legal.privacy": "Privacy policy",
+  "legal.terms": "Terms of use",
+  "legal.partner": "Partner terms for clubs",
+  "legal.revision": "Revision {v} · {date}",
+  "legal.retry": "Try again",
+  "legal.consent.login": "By continuing, you agree to the {offer} and the {privacy}",
+  "legal.consent.booking": "By booking, you agree to the {offer}, the {terms} and the club's refund policy",
+  "legal.consent.pay": "By paying, you agree to the {offer}, the {terms} and the club's refund policy",
+  "legal.consent.offer": "Public Offer",
+  "legal.consent.privacy": "Privacy Policy",
+  "legal.consent.terms": "Terms of Use",
+  "legal.desc.offer": "Public offer for the booking service between the Zonup platform and its customers.",
+  "legal.desc.privacy": "What personal data Zonup collects, where it is stored and how it is protected.",
+  "legal.desc.terms": "Rules for booking, cancellation, promo codes, reviews and account blocking on Zonup.",
+  "legal.desc.partner": "Zonup partner terms for computer and gaming clubs: subscription, commission, payouts."
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { BranchForm } from "@/components/branch-form";
@@ -161,6 +162,12 @@ export default function NewClubPage() {
               </Button>
             </div>
           </div>
+          <p className="text-xs text-muted">
+            {t("legal.consent.submit")}{" "}
+            <Link href="/partner-terms" target="_blank" className="font-semibold text-fg underline underline-offset-2 hover:text-accent">
+              {t("legal.partnerLink")}
+            </Link>
+          </p>
         </Card>
       )}
     </div>

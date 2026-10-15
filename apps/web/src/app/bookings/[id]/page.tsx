@@ -8,6 +8,7 @@ import { Suspense, useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import { BookingReview } from "@/components/booking-review";
 import { BookingTicket } from "@/components/booking-ticket";
+import { LegalConsent } from "@/components/legal-consent";
 import { SocialFollowCard } from "@/components/social";
 import { ReschedulePanel } from "@/components/reschedule-panel";
 import { RequireAuth } from "@/components/require-auth";
@@ -241,6 +242,7 @@ function Booking() {
           <Button size="lg" className="w-full" loading={busy === "pay"} disabled={!providers} onClick={pay}>
             {t("booking.payAmount", { amount: formatMoney(b.amount_due, locale) })}
           </Button>
+          <LegalConsent kind="pay" />
         </div>
       )}
       {b.status === "PENDING_PAYMENT" && b.price_snapshot?.payment_mode === "AT_CLUB" && <Alert tone="info">{t("booking.payAtClub")}</Alert>}
