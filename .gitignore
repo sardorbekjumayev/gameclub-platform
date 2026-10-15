@@ -9,3 +9,7 @@ coverage
 
 # gameclub-mobile repo shu papkaga alohida clone qilinadi
 mobile/
+
+# k6 yuklama testi ma'lumotlari (setup-data.mjs)
+loadtest/.data.json
+loadtest/results/
