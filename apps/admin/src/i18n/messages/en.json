@@ -47,6 +47,8 @@
   "errors.UNAUTHORIZED": "Invalid login or password",
   "errors.FORBIDDEN": "Access denied",
   "errors.RATE_LIMITED": "Too many attempts. Try again later",
+  "errors.RATE_LIMITED_SECONDS": "Too many attempts. Try again in {n} s",
+  "errors.RATE_LIMITED_MINUTES": "Too many attempts. Try again in {n} min",
   "errors.VALIDATION_ERROR": "Some fields are invalid",
   "errors.CONFLICT": "This value is already taken",
   "errors.NETWORK_ERROR": "Cannot reach the server",

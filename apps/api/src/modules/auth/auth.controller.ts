@@ -9,6 +9,7 @@ import { AuthService } from './auth.service';
 import { LoginDto, RefreshDto, SendOtpDto, SetPasswordDto, VerifyOtpDto } from './dto/auth.dto';
 import { OtpService } from './otp.service';
 import { TokenService } from './token.service';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
 const meta = (req: Request, device?: Record<string, unknown>) => ({
   ip: clientIp(req),
@@ -27,6 +28,7 @@ export class AuthController {
     private readonly staff: StaffService,
   ) {}
 
+  @RateLimit('sensitive')
   @Public()
   @Post('invitations/preview')
   @HttpCode(200)
@@ -35,6 +37,7 @@ export class AuthController {
     return this.staff.previewInvitation(dto.token);
   }
 
+  @RateLimit('sensitive')
   @Public()
   @Post('invitations/accept')
   @HttpCode(200)
@@ -44,6 +47,7 @@ export class AuthController {
     return this.auth.loginById(userId, meta(req));
   }
 
+  @RateLimit('sensitive')
   @Public()
   @Post('send-otp')
   @HttpCode(200)
@@ -52,6 +56,7 @@ export class AuthController {
     return this.otp.send(dto.phone, dto.purpose, clientIp(req));
   }
 
+  @RateLimit('sensitive')
   @Public()
   @Post('verify-otp')
   @HttpCode(200)
@@ -61,6 +66,7 @@ export class AuthController {
     return this.auth.loginWithPhone(dto.phone, meta(req, dto.device));
   }
 
+  @RateLimit('sensitive')
   @Public()
   @Post('login')
   @HttpCode(200)
@@ -93,6 +99,7 @@ export class AuthController {
     return { ok: true };
   }
 
+  @RateLimit('sensitive')
   @ApiBearerAuth()
   @Post('password')
   @HttpCode(200)

@@ -47,6 +47,8 @@
   "errors.UNAUTHORIZED": "Неверный логин или пароль",
   "errors.FORBIDDEN": "Нет доступа",
   "errors.RATE_LIMITED": "Слишком много попыток. Попробуйте позже",
+  "errors.RATE_LIMITED_SECONDS": "Слишком много попыток. Повторите через {n} с",
+  "errors.RATE_LIMITED_MINUTES": "Слишком много попыток. Повторите через {n} мин",
   "errors.VALIDATION_ERROR": "Данные введены неверно",
   "errors.CONFLICT": "Это значение уже занято",
   "errors.NETWORK_ERROR": "Нет связи с сервером",

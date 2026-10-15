@@ -39,6 +39,8 @@
   "errors.OTP_EXPIRED": "Срок кода истёк. Получите новый",
   "errors.OTP_TOO_MANY_ATTEMPTS": "Слишком много попыток. Получите новый код",
   "errors.RATE_LIMITED": "Слишком много запросов. Попробуйте позже",
+  "errors.RATE_LIMITED_SECONDS": "Слишком много запросов. Повторите через {n} с",
+  "errors.RATE_LIMITED_MINUTES": "Слишком много запросов. Повторите через {n} мин",
   "errors.VALIDATION_ERROR": "Неверные данные",
   "errors.UNAUTHORIZED": "Сессия истекла. Войдите снова",
   "errors.FORBIDDEN": "Нет доступа",

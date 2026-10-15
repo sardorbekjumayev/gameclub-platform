@@ -8,6 +8,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { validateEnv } from './config/env';
 import { DatabaseModule } from './database/database.module';
 import { RedisModule } from './infra/redis/redis.module';
+import { RateLimitModule } from './common/rate-limit/rate-limit.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
@@ -53,6 +54,7 @@ import { CoreServicesModule } from './modules/notifications/notifications.module
     }),
     DatabaseModule,
     RedisModule,
+    RateLimitModule,
     AuditModule,
     TelegramModule,
     RbacModule,

@@ -5,6 +5,7 @@ import { Public } from '../../common/decorators/auth.decorators';
 import { AppException } from '../../common/errors';
 import { safeEqual } from '../../common/utils/crypto';
 import { TelegramService, type TgUpdate } from './telegram.service';
+import { NoRateLimit } from '../../common/rate-limit/rate-limit.decorators';
 
 /** Prod: Telegram webhook (TELEGRAM_MODE=webhook). Secret header bilan himoyalangan. */
 @ApiExcludeController()
@@ -15,6 +16,7 @@ export class TelegramController {
     private readonly config: ConfigService,
   ) {}
 
+  @NoRateLimit()
   @Public()
   @Post('webhook')
   @HttpCode(200)

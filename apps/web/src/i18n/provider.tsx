@@ -72,7 +72,12 @@ export function useI18n() {
 export function useErrorText() {
   const { t } = useI18n();
   return useCallback((e: unknown) => {
-    const { code, details } = (e ?? {}) as { code?: string; details?: { reason?: unknown } };
+    const { code, details } = (e ?? {}) as { code?: string; details?: { reason?: unknown; retry_after?: unknown } };
+    // 429: server qancha kutishni aytsa (`details.retry_after`, soniya) — aniq vaqt bilan
+    const retry = Number(details?.retry_after);
+    if (code === "RATE_LIMITED" && Number.isFinite(retry) && retry > 0) {
+      return retry >= 60 ? t("errors.RATE_LIMITED_MINUTES", { n: Math.ceil(retry / 60) }) : t("errors.RATE_LIMITED_SECONDS", { n: Math.ceil(retry) });
+    }
     // Aniqroq matn: `errors.<CODE>.<details.reason>` (masalan TRANSFER_PENDING)
     const reasonKey = `errors.${code}.${details?.reason}` as MessageKey;
     if (code && typeof details?.reason === "string" && reasonKey in uz) return t(reasonKey);

@@ -39,6 +39,8 @@
   "errors.OTP_EXPIRED": "Code expired. Request a new one",
   "errors.OTP_TOO_MANY_ATTEMPTS": "Too many attempts. Request a new code",
   "errors.RATE_LIMITED": "Too many requests. Try again later",
+  "errors.RATE_LIMITED_SECONDS": "Too many requests. Try again in {n} s",
+  "errors.RATE_LIMITED_MINUTES": "Too many requests. Try again in {n} min",
   "errors.VALIDATION_ERROR": "Invalid data",
   "errors.UNAUTHORIZED": "Session expired. Sign in again",
   "errors.FORBIDDEN": "Access denied",
