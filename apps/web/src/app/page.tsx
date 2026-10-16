@@ -36,14 +36,10 @@ const CATEGORIES = [
   { type: "RACING_SIMULATOR", icon: Car },
 ] as const;
 
-// Klub egasi paneli manzili (masalan https://club.<domen>). Sozlanmagan bo'lsa — havola ko'rsatilmaydi.
-const CLUB_PANEL_URL = process.env.NEXT_PUBLIC_CLUB_PANEL_URL || null;
-
 export default function Home() {
   const { t, locale } = useI18n();
   const router = useRouter();
   const [q, setQ] = useState("");
-  const ownerUrl = CLUB_PANEL_URL;
   const top = useApi<BranchCard[]>("/discovery/search?limit=6&sort=rating");
   const clubs = top.data ?? [];
   const free = clubs.reduce((n, b) => n + b.free_devices, 0);
@@ -298,12 +294,11 @@ export default function Home() {
               <p className="max-w-lg font-semibold opacity-75">{t("home.owner.text")}</p>
             </div>
             <div className="flex flex-col gap-3 md:items-end">
-              {ownerUrl && (
-                <a href={ownerUrl} className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl bg-on-accent px-7 font-bold text-accent transition hover:scale-[1.02]">
-                  <Building2 className="h-5 w-5" />
-                  {t("home.owner.cta")}
-                </a>
-              )}
+              {/* Klub egasi avval ariza qoldiradi — super admin bog'lanib, klubni ulaydi */}
+              <Link href="/for-clubs" className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl bg-on-accent px-7 font-bold text-accent transition hover:scale-[1.02]">
+                <Building2 className="h-5 w-5" />
+                {t("home.owner.cta")}
+              </Link>
               <span className="text-sm font-semibold opacity-70">{t("home.owner.note")}</span>
             </div>
           </div>

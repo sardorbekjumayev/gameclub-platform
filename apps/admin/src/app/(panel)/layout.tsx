@@ -1,10 +1,11 @@
 "use client";
 
-import { BarChart3, Building, ClipboardCheck, Inbox, Layers, LayoutDashboard, LifeBuoy, LogOut, type LucideIcon, Menu, MessageSquareWarning, Radio, Scale, Share2, TicketPercent, UserCircle, Users, Wallet, X } from "lucide-react";
+import { BarChart3, Building, ClipboardCheck, Handshake, Inbox, Layers, LayoutDashboard, LifeBuoy, LogOut, type LucideIcon, Menu, MessageSquareWarning, Radio, Scale, Share2, TicketPercent, UserCircle, Users, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CLUB_TABS } from "@/components/club-tabs";
+import { useNewClubLeads } from "@/components/club-leads";
 import { ForcePasswordChange } from "@/components/force-password";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { useSupportAwaiting } from "@/components/support";
@@ -19,6 +20,7 @@ type NavItem = { href: string; label: MessageKey; icon: LucideIcon; permission?:
 
 const PLATFORM_NAV: NavItem[] = [
   { href: "/", label: "nav.dashboard", icon: LayoutDashboard, exact: true },
+  { href: "/platform/applications", label: "nav.clubLeads", icon: Handshake, permission: "platform.clubs.approve", section: "nav.section.platform" },
   { href: "/platform/clubs", label: "nav.clubApprovals", icon: ClipboardCheck, permission: "platform.clubs.approve", section: "nav.section.platform" },
   { href: "/platform/analytics", label: "nav.platformAnalytics", icon: BarChart3, permission: "platform.analytics.view", section: "nav.section.platform" },
   { href: "/platform/plans", label: "nav.plans", icon: Layers, permission: "platform.subscriptions.manage", section: "nav.section.platform" },
@@ -54,6 +56,8 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   const allowed = !!me && canUsePanel(me, PANEL);
   const current = useCurrentClub();
   const awaiting = useSupportAwaiting(allowed && PANEL === "platform" && can("platform.tickets.manage"), pathname);
+  const newLeads = useNewClubLeads(allowed && PANEL === "platform" && can("platform.clubs.approve"), pathname);
+  const badges: Record<string, number> = { "/platform/support": awaiting, "/platform/applications": newLeads };
 
   useEffect(() => {
     if (!loading && !me) router.replace("/login");
@@ -151,8 +155,8 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
               >
                 <i.icon className="h-[18px] w-[18px] shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{t(i.label)}</span>
-                {i.href === "/platform/support" && awaiting > 0 && (
-                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-bold text-on-accent">{awaiting > 99 ? "99+" : awaiting}</span>
+                {(badges[i.href] ?? 0) > 0 && (
+                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-bold text-on-accent">{badges[i.href] > 99 ? "99+" : badges[i.href]}</span>
                 )}
               </Link>
             </div>

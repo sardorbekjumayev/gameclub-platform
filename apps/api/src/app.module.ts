@@ -31,6 +31,7 @@ import { TelegramModule } from './modules/telegram/telegram.module';
 import { TelegramBotModule } from './modules/telegram/bot/telegram-bot.module';
 import { CoreServicesModule } from './modules/notifications/notifications.module';
 import { LegalModule } from './modules/legal/legal.module';
+import { ClubApplicationsModule } from './modules/club-applications/club-applications.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { LegalModule } from './modules/legal/legal.module';
     AnalyticsModule,
     TelegramBotModule,
     LegalModule,
+    ClubApplicationsModule,
     HealthModule,
   ],
   providers: [

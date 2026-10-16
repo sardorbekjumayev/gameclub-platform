@@ -874,6 +874,31 @@ model support_messages {
   @@index([ticket_id, created_at])
 }
 
+/// Klub egasining ulanish arizasi (zonup.uz dagi "Klub ochish" formasi, akkauntsiz).
+/// Super admin ko'rib chiqadi: NEW → CONTACTED → APPROVED | REJECTED.
+model club_applications {
+  id             String    @id @db.Uuid
+  full_name      String
+  phone          String
+  club_name      String
+  city           String
+  address        String?
+  devices_count  Int?
+  branches_count Int?
+  telegram       String?
+  comment        String?
+  language       String    @default("uz")
+  status         String    @default("NEW")
+  admin_note     String?
+  handled_by     String?   @db.Uuid
+  handled_at     DateTime? @db.Timestamptz
+  created_at     DateTime  @default(now()) @db.Timestamptz
+  updated_at     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([status, created_at(sort: Desc)])
+  @@index([phone])
+}
+
 // ---------- 3.8 Bildirishnoma, obuna, sozlamalar ----------
 
 model notifications {
