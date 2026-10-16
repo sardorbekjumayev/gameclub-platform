@@ -233,3 +233,6 @@ Xona sxemasi o'lchami (default 10×5). Qurilma joyi `devices.layout {x,y}` — s
 
 ### users.must_change_password + permission `staff.reset_password` (migratsiya `20261016120000_staff_password_reset`)
 Admin xodim parolini tiklaganda `true`; foydalanuvchi `POST /auth/password` bilan yangi parol o'rnatgach `false`. Migratsiya permission'ni yaratadi va `SUPER_ADMIN`, `CLUB_OWNER`, `CLUB_ADMIN` rollariga biriktiradi (`catalog.ts` bilan mos).
+
+### club_applications (migratsiya `20261016150000_club_applications`)
+`full_name*`, `phone*`, `club_name*`, `city*`, `address`, `devices_count`, `branches_count`, `telegram`, `comment`, `language*`, `status* (NEW|CONTACTED|APPROVED|REJECTED)`, `admin_note`, `handled_by`, `handled_at`. Indekslar: `(status, created_at desc)`, `(phone)`. Akkauntga bog'lanmagan (ariza egasi foydalanuvchi emas).

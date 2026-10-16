@@ -5,9 +5,6 @@ import { SocialLinks, useSocial } from "@/components/social";
 import { useI18n } from "@/i18n/provider";
 import { LEGAL_DOCS, LEGAL_LABEL } from "@/lib/legal";
 
-// Klub egasi paneli manzili (masalan https://club.<domen>). Sozlanmagan bo'lsa — havola ko'rsatilmaydi.
-const CLUB_PANEL_URL = process.env.NEXT_PUBLIC_CLUB_PANEL_URL || null;
-
 /** Har sahifadagi footer: bo'limlar, ijtimoiy tarmoqlar va huquqiy hujjatlar. */
 export function SiteFooter() {
   const { t } = useI18n();
@@ -29,11 +26,9 @@ export function SiteFooter() {
             <Link href="/map" className="hover:text-fg">
               {t("nav.map")}
             </Link>
-            {CLUB_PANEL_URL && (
-              <a href={CLUB_PANEL_URL} className="hover:text-fg">
-                {t("home.owner.cta")}
-              </a>
-            )}
+            <Link href="/for-clubs" className="hover:text-fg">
+              {t("home.owner.cta")}
+            </Link>
           </div>
         </div>
         <nav aria-label={t("legal.nav")} className="flex flex-wrap gap-x-5 gap-y-2 border-t border-line-soft pt-4 text-xs">

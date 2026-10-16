@@ -218,6 +218,11 @@ export const TEMPLATES: Record<string, T> = {
     ru: ['Как всё прошло?', 'Оставьте отзыв о {club} ({code}).'],
     en: ['How was it?', 'Leave a review for {club} ({code}).'],
   },
+  CLUB_APPLICATION_NEW: {
+    uz: ['Yangi klub arizasi', '{club} ({city}) — {name}, {phone}'],
+    ru: ['Новая заявка клуба', '{club} ({city}) — {name}, {phone}'],
+    en: ['New club application', '{club} ({city}) — {name}, {phone}'],
+  },
   ANNOUNCEMENT: {
     uz: ['{title}', '{body}'],
     ru: ['{title}', '{body}'],
