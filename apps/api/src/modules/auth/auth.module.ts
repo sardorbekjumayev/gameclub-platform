@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
+import { PlatformGateGuard } from '../../common/guards/platform-gate.guard';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 import { JwtAuthGuard, PermissionGuard } from '../rbac/guards';
 import { AuthController } from './auth.controller';
@@ -23,6 +24,8 @@ import { TokenService } from './token.service';
     OtpService,
     TokenService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // JWT'dan keyin (req.user kerak): minimal versiya + texnik xizmat darvozasi
+    { provide: APP_GUARD, useClass: PlatformGateGuard },
     // Tartib muhim: JWT'dan keyin (kalit — user id), permission (DB so'rovlari) dan oldin
     { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },

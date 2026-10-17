@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { CurrentActor } from '../../common/decorators/actor.decorator';
-import { AuthUser, CurrentUser, Public, RequirePermission } from '../../common/decorators/auth.decorators';
+import { AllowDuringMaintenance, AuthUser, CurrentUser, Public, RequirePermission } from '../../common/decorators/auth.decorators';
 import type { Actor } from '../clubs/clubs.service';
 import { LEGAL_DOCS } from './defaults';
 import { LegalDocResponse, LegalQuery, UpdateLegalDto } from './legal.dto';
@@ -14,6 +14,7 @@ const DOC_PARAM = {
 };
 
 @ApiTags('legal')
+@AllowDuringMaintenance()
 @Controller()
 export class LegalController {
   constructor(private readonly svc: LegalService) {}

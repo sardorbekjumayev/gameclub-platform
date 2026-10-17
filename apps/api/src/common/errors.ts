@@ -31,6 +31,8 @@ export const ErrorCodes = {
   PLAN_LIMIT_REACHED: HttpStatus.FORBIDDEN,
   CLUB_NOT_ACTIVE: HttpStatus.CONFLICT,
   IDEMPOTENCY_CONFLICT: HttpStatus.CONFLICT,
+  MAINTENANCE_MODE: HttpStatus.SERVICE_UNAVAILABLE,
+  APP_UPDATE_REQUIRED: 426, // Upgrade Required (HttpStatus enum'ida yo'q)
 } as const;
 
 export type ErrorCode = keyof typeof ErrorCodes;

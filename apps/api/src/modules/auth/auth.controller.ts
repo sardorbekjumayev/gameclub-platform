@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { AuthUser, CurrentUser, Public } from '../../common/decorators/auth.decorators';
+import { AllowDuringMaintenance, AuthUser, CurrentUser, Public } from '../../common/decorators/auth.decorators';
 import { clientIp, userAgent } from '../../common/utils/request';
 import { AcceptInvitationDto, InvitationTokenDto } from '../clubs/dto/clubs.dto';
 import { StaffService } from '../clubs/staff.service';
@@ -19,6 +19,7 @@ const meta = (req: Request, device?: Record<string, unknown>) => ({
 });
 
 @ApiTags('auth')
+@AllowDuringMaintenance()
 @Controller('auth')
 export class AuthController {
   constructor(

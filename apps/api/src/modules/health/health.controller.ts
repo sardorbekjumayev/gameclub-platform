@@ -1,6 +1,6 @@
 import { Controller, Get, HttpStatus, Inject, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Public } from '../../common/decorators/auth.decorators';
+import { AllowDuringMaintenance, Public } from '../../common/decorators/auth.decorators';
 import type { Response } from 'express';
 import Redis from 'ioredis';
 import { PrismaService } from '../../database/prisma.service';
@@ -10,6 +10,7 @@ import { NoRateLimit } from '../../common/rate-limit/rate-limit.decorators';
 @NoRateLimit()
 @Public()
 @ApiTags('health')
+@AllowDuringMaintenance()
 @Controller('health')
 export class HealthController {
   constructor(
