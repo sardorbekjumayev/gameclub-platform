@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { BranchForm } from "@/components/branch-form";
+import { BranchHours } from "@/components/branch-hours";
 import { ClubHeader } from "@/components/club-tabs";
 import { Empty, LoadState, StatusBadge } from "@/components/status";
 import { Alert, Button, Card, Input, Select } from "@/components/ui";
@@ -20,6 +21,7 @@ export default function BranchesPage() {
   const branches = useApi<Branch[]>(`/clubs/${clubId}/branches`);
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [hours, setHours] = useState<string | null>(null);
 
   return (
     <div className="space-y-5">
@@ -75,6 +77,11 @@ export default function BranchesPage() {
                         {t("room.title")}
                       </Button>
                     )}
+                    {can("branches.view") && (
+                      <Button size="sm" variant="secondary" onClick={() => setHours(hours === b.id ? null : b.id)}>
+                        {t("hours.title")}
+                      </Button>
+                    )}
                     {can("branches.update") && (
                       <Button size="sm" variant="ghost" onClick={() => setEditing(b.id)}>
                         {t("common.edit")}
@@ -84,6 +91,7 @@ export default function BranchesPage() {
                   </div>
                 </div>
                 {open === b.id && <Rooms branchId={b.id} />}
+                {hours === b.id && <BranchHours branch={b} onSaved={branches.reload} />}
               </>
             )}
           </Card>

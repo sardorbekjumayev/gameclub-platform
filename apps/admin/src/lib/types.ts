@@ -39,6 +39,17 @@ export type Club = {
   _count?: { branches: number; documents: number };
 };
 
+export type WorkingHours = {
+  always_open?: boolean;
+  mon?: { open: string; close: string }[];
+  tue?: { open: string; close: string }[];
+  wed?: { open: string; close: string }[];
+  thu?: { open: string; close: string }[];
+  fri?: { open: string; close: string }[];
+  sat?: { open: string; close: string }[];
+  sun?: { open: string; close: string }[];
+};
+
 export type Branch = {
   id: string;
   club_id: string;
@@ -49,6 +60,8 @@ export type Branch = {
   longitude: number;
   phone: string | null;
   status: string;
+  timezone?: string;
+  working_hours?: WorkingHours;
   is_open_now?: boolean;
 };
 
