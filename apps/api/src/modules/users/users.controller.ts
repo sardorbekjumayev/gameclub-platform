@@ -1,13 +1,17 @@
-import { Body, Controller, Get, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Patch, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
+import { CurrentActor } from '../../common/decorators/actor.decorator';
 import { AuthUser, CurrentUser, RequirePermission } from '../../common/decorators/auth.decorators';
 import { AppException } from '../../common/errors';
 import { Paginated } from '../../common/interceptors/response.interceptor';
 import { PrismaService } from '../../database/prisma.service';
 import { AuthService } from '../auth/auth.service';
+import type { Actor } from '../clubs/clubs.service';
 import { UpdateMeDto } from '../auth/dto/auth.dto';
+import { DeleteAccountDto } from './account.dto';
+import { AccountService } from './account.service';
 
 class ListUsersQuery {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;
@@ -23,11 +27,25 @@ export class UsersController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auth: AuthService,
+    private readonly account: AccountService,
   ) {}
 
   @Get('users/me')
   me(@CurrentUser() user: AuthUser) {
     return this.auth.me(user.id);
+  }
+
+  @Get('users/me/export')
+  @ApiOperation({ summary: 'Mening shaxsiy ma\'lumotlarim eksporti (GDPR)' })
+  exportMe(@CurrentUser() user: AuthUser) {
+    return this.account.exportMe(user.id);
+  }
+
+  @Delete('users/me')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Akkauntni o\'chirish (anonimlashtirish; moliyaviy yozuvlar saqlanadi)' })
+  deleteMe(@Body() dto: DeleteAccountDto, @CurrentUser() user: AuthUser, @CurrentActor() a: Actor) {
+    return this.account.deleteMe(user.id, a, dto.reason);
   }
 
   @Patch('users/me')
