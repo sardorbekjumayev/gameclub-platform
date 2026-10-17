@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Building2, CreditCard, Gamepad2, LayoutGrid, type LucideIcon, MapPin, Monitor, Star, Tags, TicketPercent, Users } from "lucide-react";
+import { BarChart3, Building2, CreditCard, Gamepad2, LayoutGrid, type LucideIcon, MapPin, Megaphone, Monitor, Star, Tags, TicketPercent, Users } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { StatusBadge } from "@/components/status";
 import { Heading, cx } from "@/components/ui";
@@ -19,6 +19,7 @@ export const CLUB_TABS: { seg: string; label: MessageKey; permission: string; ic
   { seg: "/staff", label: "club.tab.staff", permission: "staff.view", icon: Users },
   { seg: "/analytics", label: "club.tab.analytics", permission: "reports.view", icon: BarChart3 },
   { seg: "/reviews", label: "club.tab.reviews", permission: "reviews.view", icon: Star },
+  { seg: "/announcements", label: "club.tab.announcements", permission: "announcements.manage", icon: Megaphone },
 ];
 
 /** Rol uchun klubning birinchi ochiq bo'limi (operator → qurilmalar). */
