@@ -121,6 +121,19 @@ export function DevicePanel({
                   {t("live.checkInStart")}
                 </Button>
               )}
+              {device.next_booking.status === "CONFIRMED" && (
+                <Button
+                  className="w-full"
+                  variant="ghost"
+                  loading={busy === "noshow"}
+                  onClick={() => {
+                    if (!confirm(t("live.confirmNoShow"))) return;
+                    run("noshow", () => session.post(`/bookings/${device.next_booking!.id}/no-show`, {}, { "Idempotency-Key": idemKey() }), t("live.markedNoShow"));
+                  }}
+                >
+                  {t("live.markNoShow")}
+                </Button>
+              )}
             </div>
           )}
           <WalkInForm branchId={branchId} deviceIds={[device.id]} nextBookingAt={device.next_booking?.start_at ?? null} busy={busy === "walkin"} run={run} />
