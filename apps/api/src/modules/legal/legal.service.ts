@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/errors';
+import { uuidv7 } from '../../common/utils/id';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { Actor } from '../clubs/clubs.service';
 import { SettingsService } from '../settings/settings.service';
 import { LEGAL_DEFAULTS, LEGAL_DEFAULTS_DATE, LEGAL_DOCS, LEGAL_LANGS, type LegalDoc, type LegalLang } from './defaults';
 import { LEGAL_BODY_MAX, LEGAL_TITLE_MAX, type UpdateLegalDto } from './legal.dto';
+
+/** Rozilik talab qiladigan hujjatlar (mijozga ko'rsatiladigan). `partner` — klublar uchun, bu yerda emas. */
+export const CONSENT_DOCS: readonly LegalDoc[] = ['offer', 'privacy', 'terms'];
 
 /** `platform_settings` dagi qiymat: `legal.<doc>` → barcha tillar + versiya. Tahrirlanmagan til — kod qoralamasi. */
 export type StoredLegal = {
@@ -107,5 +111,45 @@ export class LegalService {
     // Commit'dan keyin: tranzaksiya davomida boshqa so'rov eski qiymatni keshlagan bo'lishi mumkin
     this.settings.invalidate();
     return this.adminView(doc, next);
+  }
+
+  // ---------- Rozilik (consents) ----------
+
+  private assertConsentDoc(rawDoc: string): LegalDoc {
+    const doc = this.assertDoc(rawDoc);
+    if (!CONSENT_DOCS.includes(doc)) {
+      throw new AppException('VALIDATION_ERROR', 'This document does not require consent', { field: 'doc', reason: 'NOT_CONSENTABLE' });
+    }
+    return doc;
+  }
+
+  // DB `consents.document_type` — enum (UPPERCASE), API `doc` — slug (lowercase).
+  private consentView(row: { document_type: string; version: string; accepted_at: Date }) {
+    return { doc: row.document_type.toLowerCase(), version: row.version, accepted_at: row.accepted_at };
+  }
+
+  /** Foydalanuvchi hujjatning joriy versiyasiga rozilik beradi. Bir versiyaga takroriy chaqiruv idempotent. */
+  async recordConsent(userId: string, rawDoc: string, ip?: string | null) {
+    const doc = this.assertConsentDoc(rawDoc);
+    const type = doc.toUpperCase();
+    const s = await this.stored(doc);
+    const version = String(s?.version ?? 1);
+    const existing = await this.prisma.consents.findFirst({ where: { user_id: userId, document_type: type, version } });
+    if (existing) return this.consentView(existing);
+    const row = await this.prisma.consents.create({
+      data: { id: uuidv7(), user_id: userId, document_type: type, version, accepted_at: new Date(), ip: ip ?? null },
+    });
+    return this.consentView(row);
+  }
+
+  /** Foydalanuvchining har bir hujjat bo'yicha eng oxirgi roziligi. */
+  async myConsents(userId: string) {
+    const rows = await this.prisma.consents.findMany({ where: { user_id: userId }, orderBy: { accepted_at: 'desc' } });
+    const latest = new Map<string, (typeof rows)[number]>();
+    for (const r of rows) if (!latest.has(r.document_type)) latest.set(r.document_type, r);
+    return CONSENT_DOCS.map((doc) => {
+      const r = latest.get(doc.toUpperCase());
+      return { doc, version: r?.version ?? null, accepted_at: r?.accepted_at ?? null };
+    });
   }
 }

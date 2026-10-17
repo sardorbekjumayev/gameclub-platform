@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Param, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { CurrentActor } from '../../common/decorators/actor.decorator';
-import { Public, RequirePermission } from '../../common/decorators/auth.decorators';
+import { AllowDuringMaintenance, AuthUser, CurrentUser, Public, RequirePermission } from '../../common/decorators/auth.decorators';
 import type { Actor } from '../clubs/clubs.service';
 import { LEGAL_DOCS } from './defaults';
 import { LegalDocResponse, LegalQuery, UpdateLegalDto } from './legal.dto';
@@ -14,6 +14,7 @@ const DOC_PARAM = {
 };
 
 @ApiTags('legal')
+@AllowDuringMaintenance()
 @Controller()
 export class LegalController {
   constructor(private readonly svc: LegalService) {}
@@ -43,5 +44,21 @@ export class LegalController {
   @ApiOperation({ summary: 'Super admin: bitta til matnini saqlash; versiya +1, audit (eski/yangi matn)' })
   update(@Param('doc') doc: string, @Body() dto: UpdateLegalDto, @CurrentActor() a: Actor) {
     return this.svc.update(doc, dto, a);
+  }
+
+  @ApiBearerAuth()
+  @Post('legal/:doc/consent')
+  @HttpCode(200)
+  @ApiParam(DOC_PARAM)
+  @ApiOperation({ summary: 'Hujjatning joriy versiyasiga rozilik berish (idempotent)' })
+  consent(@Param('doc') doc: string, @CurrentActor() a: Actor) {
+    return this.svc.recordConsent(a.id, doc, a.ip);
+  }
+
+  @ApiBearerAuth()
+  @Get('me/consents')
+  @ApiOperation({ summary: 'Mening roziliklarim: har hujjat bo\'yicha oxirgi qabul qilingan versiya' })
+  myConsents(@CurrentUser() user: AuthUser) {
+    return this.svc.myConsents(user.id);
   }
 }
